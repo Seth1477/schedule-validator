@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schedule Validator – Project Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="7" fill="#0ea5e9"/>
+        <path d="M7 14h14M7 9h10M7 19h12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="21" cy="9" r="2" fill="#f59e0b"/>
+      </svg>
+      <span class="logo-text">Schedule<strong>Validator</strong></span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Projects
+      </a>
+      <a href="upload.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload Schedule
+      </a>
+      <a href="project.html" class="active">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+        Dashboard
+      </a>
+      <a href="diagnostics.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Diagnostics
+      </a>
+      <a href="comparison.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        Comparison
+      </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-user">
+        <div class="user-avatar">S</div>
+        <div class="user-info">
+          <div class="user-name">Seth Peterson</div>
+          <div class="user-role">Project Admin</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- Project Header -->
+    <div class="project-header card mb-6">
+      <div class="project-header-left">
+        <div class="breadcrumb"><a href="index.html">Projects</a> › <span id="projectName">Downtown Medical Center Tower</span></div>
+        <h1 class="project-title" id="projectTitle">Downtown Medical Center Tower</h1>
+        <div class="project-meta-row">
+          <span class="meta-item">🏢 <span id="projectClient">HealthCorp Development LLC</span></span>
+          <span class="meta-item">💰 <span id="projectContract">$485M GMP</span></span>
+          <span class="meta-item">📍 <span id="projectLocation">Denver, CO</span></span>
+          <span class="meta-item">📅 Data Date: <strong id="projectDataDate">Jan 1, 2026</strong></span>
+          <span class="meta-item">🏁 Planned Finish: <strong id="projectPlannedFinish">Aug 31, 2026</strong></span>
+        </div>
+      </div>
+      <div class="project-header-right">
+        <div class="header-score-block">
+          <div id="overallScoreRing" class="score-ring score-ring-amber">
+            <span class="score-ring-value" id="overallScore">71</span>
+            <span class="score-ring-label">Overall</span>
+          </div>
+          <div class="score-meta">
+            <span class="score-rag-badge badge-amber">Moderate</span>
+            <span class="score-update-date">Updated Jan 10, 2026</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <a href="upload.html" class="btn btn-primary btn-sm">↑ Upload Update</a>
+          <a href="comparison.html" class="btn btn-secondary btn-sm">⇄ Compare</a>
+          <button class="btn btn-secondary btn-sm" onclick="exportNarrative()">⬇ Export</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs mb-6">
+      <div class="tab-list">
+        <button class="tab-btn active" data-tab="tab-overview">Overview</button>
+        <button class="tab-btn" data-tab="tab-scores">Scoring</button>
+        <button class="tab-btn" data-tab="tab-critical-path">Critical Path</button>
+        <button class="tab-btn" data-tab="tab-milestones">Milestones</button>
+        <button class="tab-btn" data-tab="tab-history">Version History</button>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="tab-pane active" id="tab-overview">
+        <!-- Category Score Cards -->
+        <div class="grid-3 gap-4 mb-6">
+          <div class="cat-score-card card" id="cat_logicQuality">
+            <div class="cat-score-label">Logic Quality</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-red" style="width:68%"></div></div>
+              <span class="cat-score-value text-red">68</span>
+            </div>
+            <div class="cat-weight">Weight: 25%</div>
+          </div>
+          <div class="cat-score-card card" id="cat_dateIntegrity">
+            <div class="cat-score-label">Date Integrity</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-amber" style="width:74%"></div></div>
+              <span class="cat-score-value text-amber">74</span>
+            </div>
+            <div class="cat-weight">Weight: 15%</div>
+          </div>
+          <div class="cat-score-card card" id="cat_constraintsFloat">
+            <div class="cat-score-label">Constraints &amp; Float</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-red" style="width:65%"></div></div>
+              <span class="cat-score-value text-red">65</span>
+            </div>
+            <div class="cat-weight">Weight: 15%</div>
+          </div>
+          <div class="cat-score-card card" id="cat_activityHygiene">
+            <div class="cat-score-label">Activity Hygiene</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-amber" style="width:78%"></div></div>
+              <span class="cat-score-value text-amber">78</span>
+            </div>
+            <div class="cat-weight">Weight: 15%</div>
+          </div>
+          <div class="cat-score-card card" id="cat_progressRealism">
+            <div class="cat-score-label">Progress Realism</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-amber" style="width:71%"></div></div>
+              <span class="cat-score-value text-amber">71</span>
+            </div>
+            <div class="cat-weight">Weight: 15%</div>
+          </div>
+          <div class="cat-score-card card" id="cat_criticalPathReliability">
+            <div class="cat-score-label">Critical Path Reliability</div>
+            <div class="cat-score-row">
+              <div class="cat-progress-bar"><div class="cat-progress-fill fill-red" style="width:69%"></div></div>
+              <span class="cat-score-value text-red">69</span>
+            </div>
+            <div class="cat-weight">Weight: 15%</div>
+          </div>
+        </div>
+
+        <!-- Score Trend Chart -->
+        <div class="card mb-6">
+          <div class="card-header">
+            <h2 class="card-title">Validation Score Trend</h2>
+            <span class="card-badge badge-amber">Declining</span>
+          </div>
+          <p class="card-subtitle">Score history across all uploaded schedule updates</p>
+          <div class="chart-container" style="height:260px; margin-top:16px;">
+            <canvas id="scoreTrendChart"></canvas>
+          </div>
+          <div class="chart-legend mt-4">
+            <span class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> Green Zone (≥85)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span> Amber Zone (70–84)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> Red Zone (&lt;70)</span>
+          </div>
+        </div>
+
+        <!-- Quick Stats Row -->
+        <div class="grid-4 gap-4 mb-6">
+          <div class="metric-card card">
+            <div class="metric-value text-red">23</div>
+            <div class="metric-label">Negative Float Activities</div>
+            <div class="metric-delta text-red">↑ +5 from last update</div>
+          </div>
+          <div class="metric-card card">
+            <div class="metric-value text-amber">156</div>
+            <div class="metric-label">Near-Critical Activities</div>
+            <div class="metric-delta text-amber">0–15 days float</div>
+          </div>
+          <div class="metric-card card">
+            <div class="metric-value text-amber">47</div>
+            <div class="metric-label">Open End Logic Gaps</div>
+            <div class="metric-delta text-red">↑ +8 from last update</div>
+          </div>
+          <div class="metric-card card">
+            <div class="metric-value text-red">+75d</div>
+            <div class="metric-label">Finish Date Slippage</div>
+            <div class="metric-delta text-red">vs. Baseline</div>
+          </div>
+        </div>
+
+        <!-- Narrative Panel -->
+        <div class="card narrative-card">
+          <div class="card-header">
+            <h2 class="card-title">Executive Narrative</h2>
+            <button class="btn btn-secondary btn-sm" onclick="exportNarrative()">⬇ Export DOCX</button>
+          </div>
+          <div class="narrative-body" id="narrativeText">
+            <p>The <strong>Downtown Medical Center Tower</strong> schedule (Update 7, Data Date: January 1, 2026) received an overall Validation Score of <strong class="text-amber">71/100 (Amber)</strong>, indicating moderate schedule quality concerns requiring attention.</p>
+            <p>The most critical finding is <strong>23 activities with negative total float</strong>, concentrated in the structural and MEP scopes. This indicates the project cannot achieve its planned substantial completion date of August 31, 2026 without acceleration or scope changes. The current forecast finish is <strong class="text-red">November 14, 2026</strong>, representing a <strong>75-working-day slip</strong> from the contract milestone.</p>
+            <p><strong>Logic quality</strong> scored 68/100 (Red), driven by 47 activities missing predecessor logic and 38 missing successors. These open ends undermine the reliability of the critical path and float calculations across the MEP and curtain wall scopes.</p>
+            <p><strong>Recommended actions:</strong> (1) Address negative float by reviewing all FNLT constraints — 89 hard constraints were identified, well above the DCMA threshold of 5%. (2) Close 47 predecessor logic gaps, focusing on Level 3 MEP activities. (3) Confirm data date is set accurately before the next update submission.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCORING TAB -->
+      <div class="tab-pane" id="tab-scores">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Scoring Methodology</h2>
+            <span class="badge badge-info">DCMA+ Transparent</span>
+          </div>
+          <p class="card-subtitle mb-4">Each category is scored 0–100 based on rule violations. The overall score is the weighted sum of all categories.</p>
+          <div class="scoring-table-wrapper">
+            <table class="data-table scoring-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Weight</th>
+                  <th>Score</th>
+                  <th>RAG</th>
+                  <th>Key Rules</th>
+                  <th>Weighted Contribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Logic Quality</strong></td>
+                  <td>25%</td>
+                  <td class="text-red font-bold">68</td>
+                  <td><span class="badge badge-critical">Red</span></td>
+                  <td>Open ends, excessive lag, relationship density</td>
+                  <td>17.0 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>Date Integrity</strong></td>
+                  <td>15%</td>
+                  <td class="text-amber font-bold">74</td>
+                  <td><span class="badge badge-medium">Amber</span></td>
+                  <td>Future actuals, missing data date, date anomalies</td>
+                  <td>11.1 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>Constraints &amp; Float</strong></td>
+                  <td>15%</td>
+                  <td class="text-red font-bold">65</td>
+                  <td><span class="badge badge-critical">Red</span></td>
+                  <td>Negative float, hard constraints, high float</td>
+                  <td>9.75 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>Activity Hygiene</strong></td>
+                  <td>15%</td>
+                  <td class="text-amber font-bold">78</td>
+                  <td><span class="badge badge-medium">Amber</span></td>
+                  <td>Long durations, missing calendars, activity types</td>
+                  <td>11.7 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>Progress Realism</strong></td>
+                  <td>15%</td>
+                  <td class="text-amber font-bold">71</td>
+                  <td><span class="badge badge-medium">Amber</span></td>
+                  <td>Future actuals, milestone hit rate, % complete logic</td>
+                  <td>10.65 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>Critical Path Reliability</strong></td>
+                  <td>15%</td>
+                  <td class="text-red font-bold">69</td>
+                  <td><span class="badge badge-critical">Red</span></td>
+                  <td>Near-critical density, LOE on CP, path continuity</td>
+                  <td>10.35 pts</td>
+                </tr>
+                <tr class="total-row">
+                  <td><strong>OVERALL SCORE</strong></td>
+                  <td>100%</td>
+                  <td class="text-amber font-bold" style="font-size:1.2em">71</td>
+                  <td><span class="badge badge-medium" style="font-size:0.9em">Amber</span></td>
+                  <td>—</td>
+                  <td><strong>70.55 pts</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="scoring-legend mt-4">
+            <div class="legend-row">
+              <span class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Green: 85–100 — Schedule is well-formed and reliable</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> Amber: 70–84 — Moderate issues requiring attention</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Red: &lt;70 — Significant issues. Schedule requires remediation</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CRITICAL PATH TAB -->
+      <div class="tab-pane" id="tab-critical-path">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h2 class="card-title">Critical Path Summary</h2>
+            <span class="badge badge-critical">Longest Path: 625 Working Days</span>
+          </div>
+          <div class="grid-3 gap-4 mb-4">
+            <div class="metric-card">
+              <div class="metric-value text-red">+75d</div>
+              <div class="metric-label">vs. Contract Baseline</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value text-amber">156</div>
+              <div class="metric-label">Near-Critical Activities</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value text-red">23</div>
+              <div class="metric-label">Negative Float Activities</div>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Activity / Milestone</th>
+                <th>Duration</th>
+                <th>Early Start</th>
+                <th>Early Finish</th>
+                <th>Total Float</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody id="criticalPathTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- MILESTONES TAB -->
+      <div class="tab-pane" id="tab-milestones">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Milestone Status</h2>
+            <div class="milestone-summary">
+              <span class="badge" style="background:#22c55e20;color:#16a34a">1 Complete</span>
+              <span class="badge badge-critical">4 Slipping / At Risk</span>
+              <span class="badge badge-medium">Avg slip: +42d</span>
+            </div>
+          </div>
+          <table class="data-table mt-4">
+            <thead>
+              <tr><th>Milestone</th><th>Contract Date</th><th>Forecast / Actual</th><th>Variance</th><th>Status</th></tr>
+            </thead>
+            <tbody id="milestonesTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VERSION HISTORY TAB -->
+      <div class="tab-pane" id="tab-history">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Schedule Upload History</h2>
+            <a href="upload.html" class="btn btn-primary btn-sm">↑ Upload New Update</a>
+          </div>
+          <table class="data-table mt-4">
+            <thead>
+              <tr><th>Version</th><th>Data Date</th><th>Upload Date</th><th>Filename</th><th>Score</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="versionHistoryTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- end tabs -->
+  </main>
+</div>
+
+<script src="js/demo-data.js"></script>
+<script src="js/xer-parser.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/critical-path.js"></script>
+<script src="js/app.js"></script>
+<script>
+// Render critical path table
+function renderCriticalPath() {
+  const tbody = document.getElementById('criticalPathTable');
+  if (!tbody) return;
+  tbody.innerHTML = DEMO_CRITICAL_PATH.map((act, i) => `
+    <tr class="${act.isMilestone ? 'milestone-row' : ''}">
+      <td>${i + 1}</td>
+      <td>
+        ${act.isMilestone ? '🔷 ' : ''}<strong>${act.name}</strong>
+      </td>
+      <td>${act.duration > 0 ? act.duration + 'd' : '—'}</td>
+      <td>${App.formatDate(act.earlyStart)}</td>
+      <td>${App.formatDate(act.earlyFinish)}</td>
+      <td class="${act.float < 0 ? 'text-red font-bold' : 'text-green'}">${act.float}d</td>
+      <td>${act.isMilestone ? '<span class="badge badge-info">Milestone</span>' : '<span class="badge badge-critical">Critical</span>'}</td>
+    </tr>
+  `).join('');
+}
+
+// Render version history
+function renderVersionHistory() {
+  const tbody = document.getElementById('versionHistoryTable');
+  if (!tbody) return;
+  tbody.innerHTML = DEMO_SCHEDULE_VERSIONS.slice().reverse().map(v => {
+    const ragClass = App.getRAGClass(v.overallScore);
+    const statusBadge = v.status === 'published' ? '<span class="badge badge-info">Published</span>' : '<span class="badge badge-medium">Current</span>';
+    return `<tr>
+      <td><strong>${v.version}</strong></td>
+      <td>${App.formatDate(v.dataDate)}</td>
+      <td>${App.formatDate(v.uploadDate)}</td>
+      <td class="text-sm text-secondary">${v.filename}</td>
+      <td><span class="score-pill score-pill-${ragClass}">${v.overallScore}</span></td>
+      <td>${statusBadge}</td>
+      <td>
+        <a href="project.html?uploadId=${v.id}" class="btn btn-secondary btn-sm">View</a>
+        <a href="comparison.html?baseId=${v.id}" class="btn btn-secondary btn-sm">Compare</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function exportNarrative() {
+  const text = document.getElementById('narrativeText')?.innerText || '';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Schedule_Narrative_Report.txt';
+  a.click();
+  App.showAlert('Narrative exported.', 'success');
+}
+
+// Render score trend chart
+function renderTrendChart() {
+  const canvas = document.getElementById('scoreTrendChart');
+  if (!canvas || !window.Chart) return;
+  const labels = DEMO_SCORE_HISTORY.map(h => h.version);
+  const data = DEMO_SCORE_HISTORY.map(h => h.overallScore);
+  const colors = data.map(s => s >= 85 ? '#22c55e' : s >= 70 ? '#f59e0b' : '#ef4444');
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Overall Score',
+        data,
+        borderColor: '#0ea5e9',
+        backgroundColor: 'rgba(14,165,233,0.08)',
+        borderWidth: 2.5,
+        pointRadius: 6,
+        pointBackgroundColor: colors,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        fill: true,
+        tension: 0.35
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `Score: ${ctx.parsed.y}` } } },
+      scales: {
+        y: { min: 55, max: 100, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } },
+        x: { grid: { display: false }, ticks: { color: '#64748b' } }
+      }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderCriticalPath();
+  renderVersionHistory();
+  renderTrendChart();
+});
+</script>
+</body>
+</html>

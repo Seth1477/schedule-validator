@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schedule Validator – Upload Schedule</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="7" fill="#0ea5e9"/>
+        <path d="M7 14h14M7 9h10M7 19h12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="21" cy="9" r="2" fill="#f59e0b"/>
+      </svg>
+      <span class="logo-text">Schedule<strong>Validator</strong></span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Projects
+      </a>
+      <a href="upload.html" class="active">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload Schedule
+      </a>
+      <a href="project.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+        Dashboard
+      </a>
+      <a href="diagnostics.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Diagnostics
+      </a>
+      <a href="comparison.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        Comparison
+      </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-user">
+        <div class="user-avatar">S</div>
+        <div class="user-info">
+          <div class="user-name">Seth Peterson</div>
+          <div class="user-role">Project Admin</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Upload Schedule</h1>
+        <p class="page-subtitle">Upload a Primavera P6 (.xer) schedule file to analyze quality, validate logic, and generate diagnostic reports.</p>
+      </div>
+    </div>
+
+    <div class="upload-layout">
+
+      <!-- Upload Card -->
+      <div class="card upload-card">
+        <h2 class="card-title mb-2">Select Project &amp; Upload File</h2>
+        <p class="text-secondary mb-6">Each uploaded schedule becomes a version. Only one schedule per XER file is supported.</p>
+
+        <!-- Project Select -->
+        <div class="form-group">
+          <label class="form-label">Project *</label>
+          <select class="form-select" id="uploadProjectSelect">
+            <option value="">Select a project...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Version Label (optional)</label>
+          <input type="text" class="form-input" id="versionLabel" placeholder="e.g. Update 8, Baseline Rev 2" />
+        </div>
+
+        <!-- Drop Zone -->
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('xerFileInput').click()">
+          <div class="upload-zone-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="1.5">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="upload-zone-title">Drop your .XER file here</p>
+          <p class="upload-zone-subtitle">or click to browse — Primavera P6 .xer format only</p>
+          <div class="upload-zone-badge">Max file size: 50 MB</div>
+          <input type="file" id="xerFileInput" accept=".xer" style="display:none;" />
+        </div>
+
+        <!-- File Preview -->
+        <div id="filePreview" class="file-preview" style="display:none;">
+          <div class="file-preview-icon">📋</div>
+          <div class="file-preview-info">
+            <div class="file-preview-name" id="previewFileName">schedule.xer</div>
+            <div class="file-preview-size" id="previewFileSize">0 KB</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="clearFile()">✕ Remove</button>
+        </div>
+
+        <!-- Upload Progress -->
+        <div id="uploadProgress" style="display:none;" class="mt-4">
+          <div class="progress-steps">
+            <div class="progress-step" id="step-validate">
+              <div class="step-icon step-pending">1</div>
+              <div class="step-label">Validating File</div>
+            </div>
+            <div class="progress-step-line"></div>
+            <div class="progress-step" id="step-parse">
+              <div class="step-icon step-pending">2</div>
+              <div class="step-label">Parsing Schedule</div>
+            </div>
+            <div class="progress-step-line"></div>
+            <div class="progress-step" id="step-analyze">
+              <div class="step-icon step-pending">3</div>
+              <div class="step-label">Running Analysis</div>
+            </div>
+            <div class="progress-step-line"></div>
+            <div class="progress-step" id="step-complete">
+              <div class="step-icon step-pending">4</div>
+              <div class="step-label">Complete</div>
+            </div>
+          </div>
+          <div class="upload-status-text" id="uploadStatus">Preparing...</div>
+        </div>
+
+        <div class="upload-actions mt-6">
+          <button class="btn btn-primary btn-lg" id="uploadBtn" onclick="startUpload()" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Analyze Schedule
+          </button>
+          <a href="index.html" class="btn btn-secondary btn-lg">Cancel</a>
+        </div>
+      </div>
+
+      <!-- Info Panel -->
+      <div class="upload-info-panel">
+
+        <div class="card info-card mb-4">
+          <h3 class="info-card-title">What gets analyzed?</h3>
+          <ul class="info-list">
+            <li><span class="info-icon">✅</span> Schedule logic (open ends, lag, relationships)</li>
+            <li><span class="info-icon">✅</span> Critical path &amp; float analysis</li>
+            <li><span class="info-icon">✅</span> Date integrity &amp; data date validation</li>
+            <li><span class="info-icon">✅</span> Constraint audit (hard constraints, FNLT)</li>
+            <li><span class="info-icon">✅</span> Activity hygiene (long durations, calendars)</li>
+            <li><span class="info-icon">✅</span> Progress realism (actual vs. planned)</li>
+            <li><span class="info-icon">✅</span> Milestone status &amp; slippage</li>
+            <li><span class="info-icon">✅</span> DCMA+ validation score (0–100)</li>
+          </ul>
+        </div>
+
+        <div class="card info-card mb-4">
+          <h3 class="info-card-title">File Requirements</h3>
+          <ul class="info-list">
+            <li><span class="info-icon">📄</span> Primavera P6 .xer format only</li>
+            <li><span class="info-icon">🗓️</span> Must contain a valid data date</li>
+            <li><span class="info-icon">1️⃣</span> Single project per XER file</li>
+            <li><span class="info-icon">🔒</span> Read-only — schedule is never modified</li>
+            <li><span class="info-icon">💾</span> Original file stored securely</li>
+          </ul>
+        </div>
+
+        <div class="card info-card rag-legend-card">
+          <h3 class="info-card-title">Score Interpretation</h3>
+          <div class="rag-row">
+            <div class="rag-chip rag-green">85–100</div>
+            <div class="rag-desc"><strong>Green</strong> — Well-formed schedule, minor issues only</div>
+          </div>
+          <div class="rag-row">
+            <div class="rag-chip rag-amber">70–84</div>
+            <div class="rag-desc"><strong>Amber</strong> — Moderate issues requiring attention</div>
+          </div>
+          <div class="rag-row">
+            <div class="rag-chip rag-red">&lt; 70</div>
+            <div class="rag-desc"><strong>Red</strong> — Significant issues, remediation required</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/demo-data.js"></script>
+<script src="js/xer-parser.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/critical-path.js"></script>
+<script src="js/app.js"></script>
+<script>
+let selectedFile = null;
+
+// Populate project select
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('uploadProjectSelect');
+  DEMO_PROJECTS.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+
+  // Pre-select from query param
+  const pid = new URLSearchParams(window.location.search).get('projectId');
+  if (pid) sel.value = pid;
+});
+
+// File selection
+const xerInput = document.getElementById('xerFileInput');
+xerInput.addEventListener('change', e => {
+  if (e.target.files.length > 0) selectFile(e.target.files[0]);
+});
+
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) selectFile(e.dataTransfer.files[0]);
+});
+
+function selectFile(file) {
+  if (!file.name.toLowerCase().endsWith('.xer')) {
+    App.showAlert('Invalid file type. Please select a Primavera P6 .xer file.', 'error');
+    return;
+  }
+  selectedFile = file;
+  document.getElementById('previewFileName').textContent = file.name;
+  document.getElementById('previewFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+  document.getElementById('filePreview').style.display = 'flex';
+  document.getElementById('uploadZone').style.display = 'none';
+  document.getElementById('uploadBtn').disabled = false;
+}
+
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('filePreview').style.display = 'none';
+  document.getElementById('uploadZone').style.display = 'flex';
+  document.getElementById('uploadBtn').disabled = true;
+  document.getElementById('xerFileInput').value = '';
+}
+
+function setStep(stepId, state) {
+  const el = document.getElementById(stepId)?.querySelector('.step-icon');
+  if (!el) return;
+  el.className = 'step-icon step-' + state;
+  if (state === 'done') el.textContent = '✓';
+  if (state === 'active') el.innerHTML = '<span class="spinner-sm"></span>';
+}
+
+async function startUpload() {
+  const projectId = document.getElementById('uploadProjectSelect').value;
+  if (!projectId) { App.showAlert('Please select a project.', 'error'); return; }
+  if (!selectedFile) { App.showAlert('Please select a .xer file.', 'error'); return; }
+
+  document.getElementById('uploadProgress').style.display = 'block';
+  document.getElementById('uploadBtn').disabled = true;
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  setStep('step-validate', 'active');
+  document.getElementById('uploadStatus').textContent = 'Validating file format...';
+  await sleep(600);
+  setStep('step-validate', 'done');
+
+  setStep('step-parse', 'active');
+  document.getElementById('uploadStatus').textContent = 'Parsing XER schedule data...';
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    await sleep(800);
+    setStep('step-parse', 'done');
+    setStep('step-analyze', 'active');
+    document.getElementById('uploadStatus').textContent = 'Running DCMA+ validation analysis...';
+
+    try {
+      const content = e.target.result;
+      const parser = new XERParser();
+      const parsed = parser.parse(content);
+
+      await sleep(1000);
+
+      if (!parsed || parsed.parseErrors?.length > 0) {
+        App.showAlert('XER parsing failed: ' + (parsed?.parseErrors?.[0] || 'Unknown error'), 'error');
+        document.getElementById('uploadBtn').disabled = false;
+        return;
+      }
+
+      const engine = new ScoringEngine();
+      const scores = engine.analyze(parsed);
+      const cpAnalyzer = new CriticalPathAnalyzer();
+      const cpResult = cpAnalyzer.analyze(parsed.activities, parsed.relationships);
+
+      const versionLabel = document.getElementById('versionLabel').value ||
+        `Update ${DEMO_SCHEDULE_VERSIONS.filter(v => v.projectId === projectId).length + 1}`;
+
+      const version = {
+        id: 'v' + Date.now(),
+        projectId,
+        filename: selectedFile.name,
+        dataDate: parsed.project.dataDate,
+        uploadDate: new Date().toISOString().split('T')[0],
+        version: versionLabel,
+        overallScore: scores?.overallScore || 0,
+        categoryScores: scores?.categoryScores || {},
+        activityCount: parsed.activities.length,
+        relationshipCount: parsed.relationships.length,
+        status: 'current',
+        analysisResults: scores,
+        criticalPath: cpResult
+      };
+
+      if (!App.scheduleVersions) App.scheduleVersions = [];
+      App.scheduleVersions.push(version);
+
+      // Update project score
+      const proj = App.projects?.find(p => p.id === projectId);
+      if (proj) {
+        proj.latestScore = version.overallScore;
+        proj.latestScoreRag = scores?.rag || 'amber';
+        proj.uploads = (proj.uploads || 0) + 1;
+        proj.updatedAt = new Date().toISOString().split('T')[0];
+      }
+
+      App.saveToStorage();
+
+      setStep('step-analyze', 'done');
+      setStep('step-complete', 'done');
+      document.getElementById('uploadStatus').textContent = `✅ Analysis complete! Score: ${version.overallScore}/100`;
+
+      await sleep(1200);
+      window.location.href = `project.html?projectId=${projectId}&uploadId=${version.id}`;
+
+    } catch(err) {
+      App.showAlert('Error processing schedule: ' + err.message, 'error');
+      document.getElementById('uploadBtn').disabled = false;
+    }
+  };
+  reader.readAsText(selectedFile);
+}
+</script>
+</body>
+</html>

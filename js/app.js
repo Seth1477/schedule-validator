@@ -1,0 +1,470 @@
+// app.js - Core Application Logic
+
+const App = {
+  currentProject: null,
+  currentUpload: null,
+
+  init() {
+    this.loadFromStorage();
+    this.setupNavigation();
+    this.setupEventListeners();
+    this.render();
+  },
+
+  loadFromStorage() {
+    try {
+      const stored = localStorage.getItem('sv_projects');
+      if (!stored) {
+        // Load demo data on first visit
+        this.projects = DEMO_PROJECTS;
+        this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
+        this.saveToStorage();
+      } else {
+        this.projects = JSON.parse(stored);
+        this.scheduleVersions = JSON.parse(localStorage.getItem('sv_versions') || '[]');
+      }
+    } catch(e) {
+      this.projects = DEMO_PROJECTS;
+      this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
+    }
+  },
+
+  saveToStorage() {
+    try {
+      localStorage.setItem('sv_projects', JSON.stringify(this.projects));
+      localStorage.setItem('sv_versions', JSON.stringify(this.scheduleVersions));
+    } catch(e) { console.warn('Storage save failed', e); }
+  },
+
+  getCurrentPage() {
+    const path = window.location.pathname;
+    const page = path.split('/').pop().replace('.html', '') || 'index';
+    return page;
+  },
+
+  getQueryParam(name) {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(name);
+  },
+
+  setupNavigation() {
+    // Mark active nav items
+    const page = this.getCurrentPage();
+    document.querySelectorAll('.sidebar-nav a').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      const linkPage = href.split('/').pop().replace('.html', '');
+      if (linkPage === page || (page === 'index' && linkPage === '')) {
+        link.classList.add('active');
+      }
+    });
+  },
+
+  setupEventListeners() {
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.dataset.tab;
+        const container = btn.closest('.tabs');
+        container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        container.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const pane = container.querySelector(`#${tabId}`);
+        if (pane) pane.classList.add('active');
+      });
+    });
+
+    // Upload zone drag & drop
+    const dropZone = document.querySelector('.upload-zone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) this.handleFileUpload(files[0]);
+      });
+
+      const fileInput = document.querySelector('#xerFileInput');
+      if (fileInput) {
+        fileInput.addEventListener('change', e => {
+          if (e.target.files.length > 0) this.handleFileUpload(e.target.files[0]);
+        });
+      }
+    }
+  },
+
+  handleFileUpload(file) {
+    if (!file.name.toLowerCase().endsWith('.xer')) {
+      this.showAlert('Invalid file type. Only Primavera P6 .xer files are accepted.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      this.processXER(file.name, content);
+    };
+    reader.readAsText(file);
+  },
+
+  processXER(filename, content) {
+    const statusEl = document.querySelector('#uploadStatus');
+    if (statusEl) statusEl.textContent = 'Parsing XER file...';
+
+    try {
+      const parser = new XERParser();
+      const parsed = parser.parse(content);
+
+      if (!parsed) {
+        this.showAlert('Could not parse XER file. Ensure it is a valid Primavera P6 XER export.', 'error');
+        return;
+      }
+
+      const validationIssues = parser.validate(parsed);
+      const errors = validationIssues.filter(i => i.severity === 'error');
+
+      if (errors.length > 0) {
+        this.showAlert(`XER validation failed: ${errors[0].message}`, 'error');
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = 'Running schedule analysis...';
+
+      const engine = new ScoringEngine();
+      const scores = engine.analyze(parsed);
+
+      const cpAnalyzer = new CriticalPathAnalyzer();
+      const cpResult = cpAnalyzer.analyze(parsed.activities, parsed.relationships);
+
+      const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
+      const version = {
+        id: 'v' + Date.now(),
+        projectId,
+        filename,
+        dataDate: parsed.project.dataDate,
+        uploadDate: new Date().toISOString().split('T')[0],
+        version: `Update ${this.scheduleVersions.filter(v => v.projectId === projectId).length + 1}`,
+        overallScore: scores?.overallScore || 0,
+        categoryScores: scores?.categoryScores || {},
+        activityCount: parsed.activities.length,
+        status: 'current',
+        parsedData: parsed,
+        analysisResults: scores,
+        criticalPath: cpResult
+      };
+
+      this.scheduleVersions.push(version);
+      this.saveToStorage();
+
+      if (statusEl) statusEl.textContent = 'Analysis complete!';
+      this.showAlert(`Schedule analyzed successfully. Overall Score: ${scores?.overallScore}/100`, 'success');
+
+      setTimeout(() => {
+        window.location.href = `project.html?projectId=${projectId}&uploadId=${version.id}`;
+      }, 1500);
+
+    } catch(err) {
+      this.showAlert(`Error processing XER: ${err.message}`, 'error');
+    }
+  },
+
+  getRAGClass(score) {
+    if (score >= 85) return 'green';
+    if (score >= 70) return 'amber';
+    return 'red';
+  },
+
+  getRAGLabel(score) {
+    if (score >= 85) return 'Good';
+    if (score >= 70) return 'Moderate';
+    return 'Poor';
+  },
+
+  formatDate(dateStr) {
+    if (!dateStr) return 'N/A';
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch(e) { return dateStr; }
+  },
+
+  showAlert(message, type = 'info') {
+    const existing = document.querySelector('.alert-toast');
+    if (existing) existing.remove();
+
+    const alert = document.createElement('div');
+    alert.className = `alert-toast alert-${type}`;
+    alert.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:16px 24px;border-radius:10px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.15);max-width:400px;`;
+
+    const colors = { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#0ea5e9' };
+    alert.style.background = colors[type] || colors.info;
+    alert.style.color = '#fff';
+    alert.textContent = message;
+    document.body.appendChild(alert);
+    setTimeout(() => alert.remove(), 4000);
+  },
+
+  render() {
+    const page = this.getCurrentPage();
+    if (page === 'index' || page === '') this.renderProjectsList();
+    if (page === 'project') this.renderProjectDashboard();
+    if (page === 'diagnostics') this.renderDiagnostics();
+    if (page === 'comparison') this.renderComparison();
+  },
+
+  renderProjectsList() {
+    const container = document.querySelector('#projectsGrid');
+    if (!container) return;
+
+    container.innerHTML = '';
+    this.projects.forEach(proj => {
+      const ragClass = this.getRAGClass(proj.latestScore);
+      const card = document.createElement('div');
+      card.className = 'project-card card';
+      card.innerHTML = `
+        <div class="project-card-header">
+          <div>
+            <h3 class="project-name">${proj.name}</h3>
+            <p class="project-client">${proj.client}</p>
+          </div>
+          <span class="score-badge score-badge-${ragClass}">${proj.latestScore}</span>
+        </div>
+        <p class="project-desc">${proj.description}</p>
+        <div class="project-meta">
+          <span>📍 ${proj.location}</span>
+          <span>💰 ${proj.contractValue}</span>
+          <span>📅 ${this.formatDate(proj.plannedFinish)}</span>
+        </div>
+        <div class="project-tags">
+          ${proj.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+        </div>
+        <div class="project-card-footer">
+          <span class="uploads-count">${proj.uploads} schedule uploads</span>
+          <a href="project.html?projectId=${proj.id}" class="btn btn-primary btn-sm">View Dashboard →</a>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  },
+
+  renderProjectDashboard() {
+    const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
+    const project = this.projects.find(p => p.id === projectId) || this.projects[0];
+    if (!project) return;
+
+    // Use demo data for the showcase
+    const scores = DEMO_CATEGORY_SCORES['v8'];
+    const overallScore = project.latestScore;
+
+    // Set project header info
+    this.setEl('#projectName', project.name);
+    this.setEl('#projectClient', project.client);
+    this.setEl('#projectContract', `${project.contractValue} ${project.contractType}`);
+    this.setEl('#projectLocation', project.location);
+    this.setEl('#projectDataDate', this.formatDate('2026-01-01'));
+    this.setEl('#projectPlannedFinish', this.formatDate(project.plannedFinish));
+
+    // Overall score
+    this.setEl('#overallScore', overallScore);
+    const scoreEl = document.querySelector('#overallScoreRing');
+    if (scoreEl) {
+      scoreEl.style.setProperty('--score', overallScore);
+      scoreEl.className = `score-ring score-ring-${this.getRAGClass(overallScore)}`;
+    }
+
+    // Category scores
+    Object.entries(scores).forEach(([key, cat]) => {
+      const el = document.querySelector(`#cat_${key}`);
+      if (el) {
+        el.querySelector('.cat-score-value').textContent = cat.score;
+        el.querySelector('.cat-progress-fill').style.width = cat.score + '%';
+        el.querySelector('.cat-progress-fill').className = `cat-progress-fill fill-${this.getRAGClass(cat.score)}`;
+      }
+    });
+
+    // Milestones
+    this.renderMilestones();
+
+    // Score trend chart
+    this.renderScoreTrendChart();
+  },
+
+  renderMilestones() {
+    const container = document.querySelector('#milestonesTable');
+    if (!container) return;
+    container.innerHTML = DEMO_MILESTONES.map(m => {
+      const varClass = m.variance > 30 ? 'text-red' : m.variance > 10 ? 'text-amber' : 'text-green';
+      const statusLabel = { complete: 'Complete', slipping: 'Slipping', at_risk: 'At Risk', on_track: 'On Track' }[m.status] || m.status;
+      const statusBadge = { complete: 'badge-success', slipping: 'badge-critical', at_risk: 'badge-high', on_track: 'badge-low' }[m.status] || 'badge-info';
+      return `<tr>
+        <td>${m.name}${m.isCritical ? ' <span class="badge badge-critical">Critical</span>' : ''}</td>
+        <td>${this.formatDate(m.plannedDate)}</td>
+        <td>${m.actualDate ? this.formatDate(m.actualDate) : this.formatDate(m.forecastDate)}</td>
+        <td class="${varClass}">${m.variance > 0 ? '+' : ''}${m.variance}d</td>
+        <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
+      </tr>`;
+    }).join('');
+  },
+
+  renderScoreTrendChart() {
+    const canvas = document.querySelector('#scoreTrendChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    const labels = DEMO_SCORE_HISTORY.map(h => h.version);
+    const overallData = DEMO_SCORE_HISTORY.map(h => h.overallScore);
+
+    try {
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Overall Score',
+              data: overallData,
+              borderColor: '#0ea5e9',
+              backgroundColor: 'rgba(14,165,233,0.1)',
+              borderWidth: 3,
+              pointRadius: 5,
+              pointBackgroundColor: overallData.map(s => s >= 85 ? '#22c55e' : s >= 70 ? '#f59e0b' : '#ef4444'),
+              fill: true,
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { min: 50, max: 100, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } },
+            x: { grid: { display: false }, ticks: { color: '#64748b' } }
+          }
+        }
+      });
+    } catch(e) {
+      console.warn('Chart rendering failed', e);
+    }
+  },
+
+  renderDiagnostics() {
+    const container = document.querySelector('#diagnosticsContainer');
+    if (!container) return;
+
+    container.innerHTML = DEMO_DIAGNOSTICS.map(d => this.buildDiagnosticCard(d)).join('');
+
+    // Setup drill-down toggles
+    container.querySelectorAll('.diag-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const panel = btn.closest('.diagnostic-card').querySelector('.diag-detail');
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : 'block';
+        btn.textContent = isOpen ? 'Show Activities ▼' : 'Hide Activities ▲';
+      });
+    });
+  },
+
+  buildDiagnosticCard(d) {
+    const sevClass = { critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' }[d.severity] || 'badge-info';
+    const actRows = d.activities.map(a => `
+      <tr>
+        <td>${a.id}</td>
+        <td>${a.name}</td>
+        <td>${a.wbs}</td>
+        <td>${this.formatDate(a.startDate)}</td>
+        <td>${this.formatDate(a.finishDate)}</td>
+        <td class="${a.float < 0 ? 'text-red' : a.float === 0 ? 'text-amber' : ''}">${a.float}d</td>
+        <td>${a.isCritical ? '<span class="badge badge-critical">Critical</span>' : ''}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="diagnostic-card card mb-4">
+        <div class="diag-header flex-between">
+          <div class="flex gap-4 items-center">
+            <span class="badge ${sevClass}">${d.severity.toUpperCase()}</span>
+            <span class="badge badge-info">${d.category}</span>
+            <h3 class="diag-title">${d.title}</h3>
+          </div>
+          <div class="diag-stats">
+            <span class="diag-count">${d.count} activities</span>
+            <span class="diag-percent">(${d.percent}%)</span>
+          </div>
+        </div>
+        <p class="diag-description mt-4">${d.description}</p>
+        <div class="diag-recommendation mt-4">
+          <strong>Recommendation:</strong> ${d.recommendation}
+        </div>
+        ${d.activities.length > 0 ? `
+        <div class="mt-4">
+          <button class="btn btn-secondary btn-sm diag-toggle">Show Activities ▼</button>
+          <div class="diag-detail" style="display:none; margin-top:12px;">
+            <table class="data-table">
+              <thead><tr><th>Activity ID</th><th>Activity Name</th><th>WBS</th><th>Start</th><th>Finish</th><th>Float</th><th>Critical</th></tr></thead>
+              <tbody>${actRows}</tbody>
+            </table>
+          </div>
+        </div>` : ''}
+      </div>
+    `;
+  },
+
+  renderComparison() {
+    const comp = DEMO_COMPARISON;
+
+    // Summary cards
+    const movements = [
+      { id: 'finishMovement', label: 'Finish Date Movement', value: `+${comp.summary.finishDateMovement}d`, rag: 'red' },
+      { id: 'cpSlip', label: 'Critical Path Slip', value: `+${comp.summary.criticalPathSlip}d`, rag: 'red' },
+      { id: 'scoreChange', label: 'Score Change', value: `${comp.summary.scoreChange}`, rag: 'amber' },
+      { id: 'negFloatDelta', label: 'Neg. Float Activities', value: `+${comp.summary.negativeFloatDelta}`, rag: 'red' }
+    ];
+
+    movements.forEach(m => {
+      const el = document.querySelector(`#${m.id}`);
+      if (el) {
+        el.querySelector('.stat-value').textContent = m.value;
+        el.className = `stat-card card stat-card-${m.rag}`;
+      }
+    });
+
+    // Milestone changes table
+    const milestoneContainer = document.querySelector('#milestoneChanges');
+    if (milestoneContainer) {
+      milestoneContainer.innerHTML = comp.milestoneChanges.map(m => `
+        <tr>
+          <td>${m.name}</td>
+          <td>${this.formatDate(m.priorForecast)}</td>
+          <td>${this.formatDate(m.currentForecast)}</td>
+          <td class="text-red">+${m.variance}d</td>
+          <td><span class="badge badge-critical">Slipped</span></td>
+        </tr>
+      `).join('');
+    }
+
+    // Activity changes
+    const actContainer = document.querySelector('#activityChanges');
+    if (actContainer) {
+      actContainer.innerHTML = comp.activityChanges.map(a => `
+        <tr>
+          <td>${a.id}</td>
+          <td>${a.name}</td>
+          <td>${this.formatDate(a.priorStart)} → ${this.formatDate(a.newStart)}</td>
+          <td>${this.formatDate(a.priorFinish)} → ${this.formatDate(a.newFinish)}</td>
+          <td class="${a.finishVariance > 0 ? 'text-red' : 'text-green'}">${a.finishVariance > 0 ? '+' : ''}${a.finishVariance}d</td>
+          <td class="${a.floatChange < 0 ? 'text-red' : 'text-green'}">${a.floatChange > 0 ? '+' : ''}${a.floatChange}d</td>
+        </tr>
+      `).join('');
+    }
+  },
+
+  setEl(selector, text) {
+    const el = document.querySelector(selector);
+    if (el) el.textContent = text;
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => App.init());
+window.App = App;
