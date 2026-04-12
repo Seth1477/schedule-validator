@@ -305,7 +305,8 @@ function createProject() {
   CC.Auth.renderUserState();
 
   // Show first-login tutorial after a short delay
-  const tutorialKey = 'cc_tutorial_seen_' + user.email;
+  // v2 key — clears old dismissed state so fixed tutorial shows once more
+  const tutorialKey = 'cc_tutorial_seen_v2_' + user.email;
   if (!localStorage.getItem(tutorialKey)) {
     setTimeout(() => showTutorial(), 800);
   }
@@ -313,99 +314,80 @@ function createProject() {
 
 /* ── First-login Tutorial ─────────────────────────────────── */
 function showTutorial() {
-  // Mark as seen immediately so it never re-appears
   const user = CC.Auth.currentUser();
-  if (user) localStorage.setItem('cc_tutorial_seen_' + user.email, '1');
+  if (user) localStorage.setItem('cc_tutorial_seen_v2_' + user.email, '1');
 
-  const overlay = document.createElement('div');
-  overlay.id = 'cc-tutorial';
-  overlay.style.cssText = `
-    position:fixed;inset:0;z-index:8000;pointer-events:none;
-  `;
-
-  overlay.innerHTML = `
-    <!-- Dark backdrop with a cutout over the Upload button -->
-    <div id="tut-backdrop" style="
-      position:fixed;inset:0;
-      background:rgba(13,11,30,0.72);
-      backdrop-filter:blur(2px);
-      pointer-events:all;
-    "></div>
-
-    <!-- Spotlight highlight (positioned via JS) -->
-    <div id="tut-spotlight" style="
-      position:fixed;
-      border-radius:12px;
-      box-shadow:0 0 0 4px #a593f5, 0 0 0 9999px rgba(13,11,30,0.72);
-      pointer-events:none;
-      transition:all 0.4s ease;
-      z-index:8001;
-    "></div>
-
-    <!-- Animated arrow + tooltip -->
-    <div id="tut-tooltip" style="
-      position:fixed;
-      background:#fff;
-      border-radius:16px;
-      padding:24px 28px;
-      max-width:300px;
-      box-shadow:0 16px 48px rgba(0,0,0,0.25);
-      z-index:8002;
-      pointer-events:all;
-    ">
-      <button onclick="closeTutorial()" style="
-        position:absolute;top:12px;right:12px;background:none;border:none;
-        cursor:pointer;color:#94a3b8;font-size:18px;line-height:1;padding:4px;
-      ">✕</button>
-
-      <!-- Step indicators -->
-      <div id="tut-steps" style="display:flex;gap:6px;margin-bottom:14px;">
-        <div class="tut-dot active" style="width:8px;height:8px;border-radius:50%;background:#7c6fe0;transition:background 0.3s;"></div>
-        <div class="tut-dot" style="width:8px;height:8px;border-radius:50%;background:#e2e8f0;transition:background 0.3s;"></div>
-        <div class="tut-dot" style="width:8px;height:8px;border-radius:50%;background:#e2e8f0;transition:background 0.3s;"></div>
-      </div>
-
-      <div id="tut-icon" style="font-size:32px;margin-bottom:10px;">👋</div>
-      <h3 id="tut-title" style="font-size:17px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Welcome to Construct Check!</h3>
-      <p id="tut-body" style="font-size:14px;color:#64748b;line-height:1.6;margin-bottom:20px;">
-        Let's get your first schedule analysed. It only takes a few seconds. Click <strong>Next</strong> to see how.
-      </p>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <button onclick="closeTutorial()" style="background:none;border:none;cursor:pointer;font-size:13px;color:#94a3b8;">Skip tutorial</button>
-        <button id="tut-next-btn" onclick="tutorialNext()" style="
-          background:#7c6fe0;color:#fff;border:none;border-radius:8px;
-          padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;
-        ">Next →</button>
-      </div>
-    </div>
-
-    <!-- Animated pulse ring around spotlight -->
-    <div id="tut-pulse" style="
-      position:fixed;border-radius:14px;
-      border:3px solid rgba(165,147,245,0.6);
-      pointer-events:none;z-index:8000;
-      animation:tutPulse 1.4s ease-in-out infinite;
-    "></div>
-  `;
-
-  // Pulse animation
+  // Inject keyframe styles
   const style = document.createElement('style');
   style.textContent = `
     @keyframes tutPulse {
-      0%   { transform: scale(1);   opacity: 0.8; }
-      50%  { transform: scale(1.06); opacity: 0.3; }
-      100% { transform: scale(1);   opacity: 0.8; }
+      0%,100% { transform:scale(1);   opacity:.7; }
+      50%      { transform:scale(1.07); opacity:.25; }
     }
-    @keyframes tutBounce {
-      0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-6px); }
-    }
-    #tut-arrow { animation: tutBounce 0.9s ease-in-out infinite; display:inline-block; }
   `;
   document.head.appendChild(style);
-  document.body.appendChild(overlay);
 
-  // Start on step 0
+  /*
+   * KEY FIX: No separate backdrop div.
+   * The spotlight uses box-shadow with a 9999px spread to darken everything
+   * OUTSIDE the spotlight — the area inside the spotlight remains fully
+   * visible and interactive. pointer-events:none lets clicks pass through.
+   */
+  const overlay = document.createElement('div');
+  overlay.id = 'cc-tutorial';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:8000;pointer-events:none;';
+
+  overlay.innerHTML = `
+    <!-- Spotlight: box-shadow creates dark surround; element itself is clear -->
+    <div id="tut-spotlight" style="
+      position:fixed;border-radius:12px;
+      box-shadow:0 0 0 5px #a593f5, 0 0 0 9999px rgba(13,11,30,0.78);
+      pointer-events:none;
+      transition:top .35s ease,left .35s ease,width .35s ease,height .35s ease;
+      z-index:8001;
+    "></div>
+
+    <!-- Pulse ring (decorative, sits behind spotlight) -->
+    <div id="tut-pulse" style="
+      position:fixed;border-radius:14px;
+      border:3px solid rgba(165,147,245,0.55);
+      pointer-events:none;z-index:8000;
+      animation:tutPulse 1.5s ease-in-out infinite;
+    "></div>
+
+    <!-- Tooltip card — pointer-events:all so buttons are clickable -->
+    <div id="tut-tooltip" style="
+      position:fixed;background:#fff;border-radius:16px;
+      padding:24px 28px 20px;width:300px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.28);
+      z-index:8003;pointer-events:all;
+      transition:top .35s ease,left .35s ease;
+    ">
+      <button onclick="closeTutorial()" style="
+        position:absolute;top:12px;right:12px;background:none;border:none;
+        cursor:pointer;color:#94a3b8;font-size:20px;line-height:1;padding:2px 6px;
+      ">×</button>
+
+      <div id="tut-steps" style="display:flex;gap:6px;margin-bottom:16px;"></div>
+
+      <div id="tut-icon" style="font-size:34px;margin-bottom:10px;"></div>
+      <h3 id="tut-title" style="font-size:17px;font-weight:700;color:#1e1b4b;margin-bottom:8px;"></h3>
+      <p id="tut-body" style="font-size:14px;color:#64748b;line-height:1.65;margin-bottom:22px;"></p>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button onclick="closeTutorial()" style="
+          background:none;border:none;cursor:pointer;font-size:13px;color:#94a3b8;
+        ">Skip tutorial</button>
+        <button id="tut-next-btn" onclick="tutorialNext()" style="
+          background:#7c6fe0;color:#fff;border:none;border-radius:9px;
+          padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;
+          box-shadow:0 4px 14px rgba(124,111,224,.35);
+        "></button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
   window._tutStep = 0;
   positionTutorial();
 }
@@ -435,60 +417,74 @@ const TUT_STEPS = [
 ];
 
 function positionTutorial() {
-  const step = TUT_STEPS[window._tutStep];
-  const el = step.target();
-  const tooltip = document.getElementById('tut-tooltip');
-  const spotlight = document.getElementById('tut-spotlight');
-  const pulse = document.getElementById('tut-pulse');
+  const step     = TUT_STEPS[window._tutStep];
+  const el       = step.target();
+  const tooltip  = document.getElementById('tut-tooltip');
+  const spotlight= document.getElementById('tut-spotlight');
+  const pulse    = document.getElementById('tut-pulse');
+  const isLast   = window._tutStep === TUT_STEPS.length - 1;
 
-  // Update content
-  document.getElementById('tut-icon').textContent = step.icon;
+  // Rebuild step dots
+  const dotsEl = document.getElementById('tut-steps');
+  dotsEl.innerHTML = TUT_STEPS.map((_, i) =>
+    `<div style="width:8px;height:8px;border-radius:50%;background:${i===window._tutStep?'#7c6fe0':'#e2e8f0'};transition:background .3s;"></div>`
+  ).join('');
+
+  // Update tooltip content
+  document.getElementById('tut-icon').textContent  = step.icon;
   document.getElementById('tut-title').textContent = step.title;
-  document.getElementById('tut-body').innerHTML = step.body;
-  const isLast = window._tutStep === TUT_STEPS.length - 1;
+  document.getElementById('tut-body').innerHTML    = step.body;
   document.getElementById('tut-next-btn').textContent = isLast ? 'Got it! 🎉' : 'Next →';
-
-  // Update step dots
-  document.querySelectorAll('.tut-dot').forEach((d, i) => {
-    d.style.background = i === window._tutStep ? '#7c6fe0' : '#e2e8f0';
-  });
 
   if (!el) { closeTutorial(); return; }
 
-  const r = el.getBoundingClientRect();
-  const pad = 10;
+  // Scroll element into view if needed
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
-  // Position spotlight
-  const sl = { top: r.top - pad, left: r.left - pad, width: r.width + pad*2, height: r.height + pad*2 };
-  spotlight.style.top = sl.top + 'px';
-  spotlight.style.left = sl.left + 'px';
-  spotlight.style.width = sl.width + 'px';
-  spotlight.style.height = sl.height + 'px';
+  // Give scroll a moment then position
+  requestAnimationFrame(() => {
+    const r   = el.getBoundingClientRect();
+    const pad = 12;
 
-  // Pulse same position
-  pulse.style.top    = (sl.top - 4) + 'px';
-  pulse.style.left   = (sl.left - 4) + 'px';
-  pulse.style.width  = (sl.width + 8) + 'px';
-  pulse.style.height = (sl.height + 8) + 'px';
+    // ── Spotlight ──────────────────────────────────────────────
+    // The box-shadow spread darkens OUTSIDE this rect — nothing
+    // inside is blurred or covered, so the element remains clear.
+    spotlight.style.top    = (r.top  - pad) + 'px';
+    spotlight.style.left   = (r.left - pad) + 'px';
+    spotlight.style.width  = (r.width  + pad * 2) + 'px';
+    spotlight.style.height = (r.height + pad * 2) + 'px';
 
-  // Position tooltip — try to place below, fall back to above
-  const tw = 300, th = 220;
-  let tTop, tLeft;
-  if (step.position === 'right') {
-    tTop  = r.top + r.height / 2 - th / 2;
-    tLeft = r.right + 20;
-  } else if (r.bottom + th + 24 < window.innerHeight) {
-    tTop  = r.bottom + 20;
-    tLeft = r.left + r.width / 2 - tw / 2;
-  } else {
-    tTop  = r.top - th - 20;
-    tLeft = r.left + r.width / 2 - tw / 2;
-  }
-  tLeft = Math.max(12, Math.min(tLeft, window.innerWidth - tw - 12));
-  tTop  = Math.max(12, tTop);
-  tooltip.style.top  = tTop + 'px';
-  tooltip.style.left = tLeft + 'px';
-  tooltip.style.width = tw + 'px';
+    // ── Pulse ring (slightly larger than spotlight) ─────────────
+    pulse.style.top    = (r.top  - pad - 5) + 'px';
+    pulse.style.left   = (r.left - pad - 5) + 'px';
+    pulse.style.width  = (r.width  + pad * 2 + 10) + 'px';
+    pulse.style.height = (r.height + pad * 2 + 10) + 'px';
+
+    // ── Tooltip placement ───────────────────────────────────────
+    const tw = 300;
+    // Estimate tooltip height based on content
+    const th = isLast ? 210 : 240;
+    let tTop, tLeft;
+
+    if (step.position === 'right') {
+      tTop  = r.top + r.height / 2 - th / 2;
+      tLeft = r.right + 20;
+    } else if (r.bottom + th + 20 < window.innerHeight) {
+      // Below spotlight
+      tTop  = r.bottom + pad + 16;
+      tLeft = r.left + r.width / 2 - tw / 2;
+    } else {
+      // Above spotlight
+      tTop  = r.top - pad - th - 16;
+      tLeft = r.left + r.width / 2 - tw / 2;
+    }
+
+    tLeft = Math.max(12, Math.min(tLeft, window.innerWidth  - tw - 12));
+    tTop  = Math.max(12, Math.min(tTop,  window.innerHeight - th - 12));
+
+    tooltip.style.top  = tTop  + 'px';
+    tooltip.style.left = tLeft + 'px';
+  });
 }
 
 function tutorialNext() {
