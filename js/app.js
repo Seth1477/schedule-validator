@@ -224,7 +224,7 @@ const App = {
 
   render() {
     const page = this.getCurrentPage();
-    if (page === 'index' || page === '') this.renderProjectsList();
+    if (page === 'index' || page === '' || page === 'dashboard') this.renderProjectsList();
     if (page === 'project') this.renderProjectDashboard();
     if (page === 'diagnostics') this.renderDiagnostics();
     if (page === 'comparison') this.renderComparison();
@@ -308,6 +308,7 @@ const App = {
 
     // Set project header info
     this.setEl('#projectName', project.name);
+    this.setEl('#projectTitle', project.name);
     this.setEl('#projectClient', project.client);
     this.setEl('#projectContract', `${project.contractValue} ${project.contractType}`);
     this.setEl('#projectLocation', project.location);
