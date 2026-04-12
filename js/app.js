@@ -332,11 +332,85 @@ const App = {
       }
     });
 
+    // Executive narrative
+    this.renderNarrative(project, overallScore, scores);
+
     // Milestones
     this.renderMilestones();
 
     // Score trend chart
     this.renderScoreTrendChart();
+  },
+
+  renderNarrative(project, overallScore, scores) {
+    const el = document.getElementById('narrativeText');
+    if (!el) return;
+
+    const ragLabel = overallScore >= 80 ? 'Green' : overallScore >= 65 ? 'Amber' : 'Red';
+    const ragClass = overallScore >= 80 ? 'text-green' : overallScore >= 65 ? 'text-amber' : 'text-red';
+
+    // Find worst scoring category
+    let worstCat = null, worstScore = 101;
+    if (scores) {
+      Object.values(scores).forEach(cat => {
+        if (cat.score < worstScore) { worstScore = cat.score; worstCat = cat; }
+      });
+    }
+
+    const logicScore = scores?.logicQuality?.score ?? null;
+    const constraintsScore = scores?.constraintsFloat?.score ?? null;
+    const logicRag = logicScore !== null ? (logicScore >= 80 ? 'Green' : logicScore >= 65 ? 'Amber' : 'Red') : null;
+    const logicClass = logicScore !== null ? (logicScore >= 80 ? 'text-green' : logicScore >= 65 ? 'text-amber' : 'text-red') : '';
+
+    // Derive version info from schedule versions
+    const versions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+    const latest = versions.find(v => v.status === 'current') || versions[versions.length - 1];
+    const versionLabel = latest ? latest.version : 'Latest Update';
+    const dataDate = latest ? this.formatDate(latest.dataDate) : 'N/A';
+
+    // Negative float diagnostics
+    const negFloatDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'NEGATIVE_FLOAT');
+    const negFloatCount = negFloatDiag ? negFloatDiag.count : null;
+
+    // Open-end predecessor diagnostic
+    const openEndDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'OPEN_ENDS_PREDECESSOR');
+    const openEndCount = openEndDiag ? openEndDiag.count : null;
+    const openEndSucc = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'OPEN_ENDS_SUCCESSOR');
+    const openEndSuccCount = openEndSucc ? openEndSucc.count : null;
+
+    // Constraints diagnostic
+    const constraintsDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'EXCESSIVE_CONSTRAINTS');
+    const constraintsCount = constraintsDiag ? constraintsDiag.count : null;
+
+    // Forecast finish from milestones
+    const substCompMilestone = (window.DEMO_MILESTONES || []).find(m => m.name === 'Substantial Completion');
+    const forecastFinish = substCompMilestone ? this.formatDate(substCompMilestone.forecastDate) : this.formatDate(project.plannedFinish);
+    const slipDays = substCompMilestone ? substCompMilestone.variance : null;
+
+    let html = `<p>The <strong>${project.name}</strong> schedule (${versionLabel}, Data Date: ${dataDate}) received an overall Validation Score of <strong class="${ragClass}">${overallScore}/100 (${ragLabel})</strong>, indicating ${overallScore >= 80 ? 'strong schedule quality with minor areas for improvement' : overallScore >= 65 ? 'moderate schedule quality concerns requiring attention' : 'significant schedule quality issues requiring immediate remediation'}.</p>`;
+
+    if (negFloatCount !== null) {
+      html += `<p>The most critical finding is <strong>${negFloatCount} activities with negative total float</strong>. This indicates the project cannot achieve its planned substantial completion date of ${this.formatDate(project.plannedFinish)} without acceleration or scope changes. The current forecast finish is <strong class="text-red">${forecastFinish}</strong>${slipDays ? `, representing a <strong>${slipDays}-working-day slip</strong> from the contract milestone` : ''}.`;
+      html += `</p>`;
+    }
+
+    if (logicScore !== null && openEndCount !== null) {
+      html += `<p><strong>Logic quality</strong> scored <span class="${logicClass}">${logicScore}/100 (${logicRag})</span>`;
+      if (openEndCount || openEndSuccCount) {
+        html += `, driven by ${openEndCount ? `${openEndCount} activities missing predecessor logic` : ''}${openEndCount && openEndSuccCount ? ' and ' : ''}${openEndSuccCount ? `${openEndSuccCount} missing successors` : ''}. These open ends undermine the reliability of the critical path and float calculations.`;
+      } else {
+        html += `.`;
+      }
+      html += `</p>`;
+    }
+
+    const actions = [];
+    if (constraintsCount !== null) actions.push(`Address negative float by reviewing all FNLT constraints — ${constraintsCount} hard constraints were identified, well above the DCMA threshold of 5%`);
+    if (openEndCount) actions.push(`Close ${openEndCount} predecessor logic gaps to strengthen critical path reliability`);
+    actions.push(`Confirm data date is set accurately before the next update submission`);
+    html += `<p><strong>Recommended actions:</strong> ${actions.map((a, i) => `(${i + 1}) ${a}.`).join(' ')}</p>`;
+
+    el.innerHTML = html;
   },
 
   renderMilestones() {

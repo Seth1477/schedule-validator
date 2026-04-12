@@ -58,16 +58,16 @@ const DEMO_PROJECTS = [
   }
 ];
 
-// Detailed schedule data for proj-001 (Downtown Medical Center)
+// Detailed schedule data for proj-001 (Iron Man's Stark Tower Rebuild)
 const DEMO_SCHEDULE_VERSIONS = [
-  { id: 'v1', projectId: 'proj-001', version: 'Baseline', dataDate: '2024-03-01', uploadDate: '2024-03-05', filename: 'MedCenter_Baseline.xer', overallScore: 82, status: 'published' },
-  { id: 'v2', projectId: 'proj-001', version: 'Update 1', dataDate: '2024-06-01', uploadDate: '2024-06-10', filename: 'MedCenter_Update1.xer', overallScore: 79, status: 'published' },
-  { id: 'v3', projectId: 'proj-001', version: 'Update 2', dataDate: '2024-09-01', uploadDate: '2024-09-08', filename: 'MedCenter_Update2.xer', overallScore: 76, status: 'published' },
-  { id: 'v4', projectId: 'proj-001', version: 'Update 3', dataDate: '2024-12-01', uploadDate: '2024-12-09', filename: 'MedCenter_Update3.xer', overallScore: 74, status: 'published' },
-  { id: 'v5', projectId: 'proj-001', version: 'Update 4', dataDate: '2025-03-01', uploadDate: '2025-03-07', filename: 'MedCenter_Update4.xer', overallScore: 73, status: 'published' },
-  { id: 'v6', projectId: 'proj-001', version: 'Update 5', dataDate: '2025-06-01', uploadDate: '2025-06-06', filename: 'MedCenter_Update5.xer', overallScore: 70, status: 'published' },
-  { id: 'v7', projectId: 'proj-001', version: 'Update 6', dataDate: '2025-09-01', uploadDate: '2025-09-05', filename: 'MedCenter_Update6.xer', overallScore: 72, status: 'published' },
-  { id: 'v8', projectId: 'proj-001', version: 'Update 7', dataDate: '2026-01-01', uploadDate: '2026-01-10', filename: 'MedCenter_Update7.xer', overallScore: 71, status: 'current' }
+  { id: 'v1', projectId: 'proj-001', version: 'Baseline', dataDate: '2024-03-01', uploadDate: '2024-03-05', filename: 'StarkTower_Baseline.xer', overallScore: 82, status: 'published' },
+  { id: 'v2', projectId: 'proj-001', version: 'Update 1', dataDate: '2024-06-01', uploadDate: '2024-06-10', filename: 'StarkTower_Update1.xer', overallScore: 79, status: 'published' },
+  { id: 'v3', projectId: 'proj-001', version: 'Update 2', dataDate: '2024-09-01', uploadDate: '2024-09-08', filename: 'StarkTower_Update2.xer', overallScore: 76, status: 'published' },
+  { id: 'v4', projectId: 'proj-001', version: 'Update 3', dataDate: '2024-12-01', uploadDate: '2024-12-09', filename: 'StarkTower_Update3.xer', overallScore: 74, status: 'published' },
+  { id: 'v5', projectId: 'proj-001', version: 'Update 4', dataDate: '2025-03-01', uploadDate: '2025-03-07', filename: 'StarkTower_Update4.xer', overallScore: 73, status: 'published' },
+  { id: 'v6', projectId: 'proj-001', version: 'Update 5', dataDate: '2025-06-01', uploadDate: '2025-06-06', filename: 'StarkTower_Update5.xer', overallScore: 70, status: 'published' },
+  { id: 'v7', projectId: 'proj-001', version: 'Update 6', dataDate: '2025-09-01', uploadDate: '2025-09-05', filename: 'StarkTower_Update6.xer', overallScore: 72, status: 'published' },
+  { id: 'v8', projectId: 'proj-001', version: 'Update 7', dataDate: '2026-01-01', uploadDate: '2026-01-10', filename: 'StarkTower_Update7.xer', overallScore: 71, status: 'current' }
 ];
 
 const DEMO_CATEGORY_SCORES = {
@@ -95,11 +95,11 @@ const DEMO_DIAGNOSTICS = [
     penalty: 8.2,
     recommendation: 'Add finish-to-start relationships from preceding activities or milestones. Focus on Level 3 activities in the MEP and Structural WBS.',
     activities: [
-      { id: 'A1042', name: 'Install Chiller Plant Equipment', wbs: '3.4.2.1', startDate: '2025-08-15', finishDate: '2025-10-30', float: 0, isCritical: true },
-      { id: 'A1087', name: 'Rough-in Medical Gas Systems - Floor 8', wbs: '3.3.4.8', startDate: '2025-07-01', finishDate: '2025-08-15', float: 4, isCritical: false },
-      { id: 'A1093', name: 'Install Curtain Wall - Levels 12-16', wbs: '2.5.3.2', startDate: '2025-06-20', finishDate: '2025-09-10', float: -2, isCritical: true },
-      { id: 'A1102', name: 'Pour Elevated Slab - Level 18', wbs: '2.2.4.18', startDate: '2025-09-01', finishDate: '2025-09-22', float: -5, isCritical: true },
-      { id: 'A1115', name: 'Install HVAC Ductwork - OR Suite', wbs: '3.2.1.4', startDate: '2025-11-01', finishDate: '2025-12-15', float: 0, isCritical: true }
+      { id: 'A1042', name: 'Install Arc Reactor Cooling System', wbs: '3.4.2.1', startDate: '2025-08-15', finishDate: '2025-10-30', float: 0, isCritical: true },
+      { id: 'A1087', name: 'Rough-in Vibranium Shielding - Floor 8', wbs: '3.3.4.8', startDate: '2025-07-01', finishDate: '2025-08-15', float: 4, isCritical: false },
+      { id: 'A1093', name: 'Install Stark Armour Cladding - Levels 12-16', wbs: '2.5.3.2', startDate: '2025-06-20', finishDate: '2025-09-10', float: -2, isCritical: true },
+      { id: 'A1102', name: 'Pour Arc-Reactor Containment Slab - Level 18', wbs: '2.2.4.18', startDate: '2025-09-01', finishDate: '2025-09-22', float: -5, isCritical: true },
+      { id: 'A1115', name: 'Install AI Lab Climate Control - Level 93', wbs: '3.2.1.4', startDate: '2025-11-01', finishDate: '2025-12-15', float: 0, isCritical: true }
     ]
   },
   {
@@ -115,8 +115,8 @@ const DEMO_DIAGNOSTICS = [
     penalty: 6.8,
     recommendation: 'Connect these activities to their downstream work packages. Validate with the P6 scheduler that all work feeds into summary milestones or subsequent WBS phases.',
     activities: [
-      { id: 'A2011', name: 'Concrete Testing - Tower Level 20', wbs: '2.2.4.20', startDate: '2025-10-15', finishDate: '2025-10-17', float: 12, isCritical: false },
-      { id: 'A2034', name: 'Survey & Layout - Mechanical Penthouse', wbs: '3.1.5', startDate: '2025-10-01', finishDate: '2025-10-05', float: 0, isCritical: true }
+      { id: 'A2011', name: 'Vibranium Tensile Testing - Level 20', wbs: '2.2.4.20', startDate: '2025-10-15', finishDate: '2025-10-17', float: 12, isCritical: false },
+      { id: 'A2034', name: 'Survey & Layout - Arc Reactor Penthouse', wbs: '3.1.5', startDate: '2025-10-01', finishDate: '2025-10-05', float: 0, isCritical: true }
     ]
   },
   {
@@ -132,9 +132,9 @@ const DEMO_DIAGNOSTICS = [
     penalty: 7.4,
     recommendation: 'Investigate whether constraints are driving negative float. Remove non-essential "Finish No Later Than" constraints and verify data date is set correctly.',
     activities: [
-      { id: 'A1093', name: 'Install Curtain Wall - Levels 12-16', wbs: '2.5.3.2', startDate: '2025-06-20', finishDate: '2025-09-10', float: -2, isCritical: true },
-      { id: 'A1102', name: 'Pour Elevated Slab - Level 18', wbs: '2.2.4.18', startDate: '2025-09-01', finishDate: '2025-09-22', float: -5, isCritical: true },
-      { id: 'A1201', name: 'Install Elevator Equipment - Cab 3', wbs: '4.2.3', startDate: '2025-12-01', finishDate: '2025-12-30', float: -8, isCritical: true }
+      { id: 'A1093', name: 'Install Stark Armour Cladding - Levels 12-16', wbs: '2.5.3.2', startDate: '2025-06-20', finishDate: '2025-09-10', float: -2, isCritical: true },
+      { id: 'A1102', name: 'Pour Arc-Reactor Containment Slab - Level 18', wbs: '2.2.4.18', startDate: '2025-09-01', finishDate: '2025-09-22', float: -5, isCritical: true },
+      { id: 'A1201', name: 'Install Repulsor-Lift Elevator - Cab 3', wbs: '4.2.3', startDate: '2025-12-01', finishDate: '2025-12-30', float: -8, isCritical: true }
     ]
   },
   {
@@ -211,23 +211,23 @@ const DEMO_DIAGNOSTICS = [
 
 const DEMO_MILESTONES = [
   { id: 'm001', name: 'Foundation Complete', plannedDate: '2024-10-15', forecastDate: '2024-10-15', actualDate: '2024-10-18', variance: 3, status: 'complete', isCritical: true },
-  { id: 'm002', name: 'Structure Topped Out', plannedDate: '2025-06-30', forecastDate: '2025-07-22', actualDate: null, variance: 22, status: 'slipping', isCritical: true },
-  { id: 'm003', name: 'Building Enclosed', plannedDate: '2025-09-30', forecastDate: '2025-11-15', actualDate: null, variance: 46, status: 'slipping', isCritical: true },
-  { id: 'm004', name: 'MEP Rough-In Complete', plannedDate: '2026-01-31', forecastDate: '2026-03-30', actualDate: null, variance: 58, status: 'at_risk', isCritical: true },
+  { id: 'm002', name: 'Tower Structure Topped Out', plannedDate: '2025-06-30', forecastDate: '2025-07-22', actualDate: null, variance: 22, status: 'slipping', isCritical: true },
+  { id: 'm003', name: 'Tower Exterior Enclosed', plannedDate: '2025-09-30', forecastDate: '2025-11-15', actualDate: null, variance: 46, status: 'slipping', isCritical: true },
+  { id: 'm004', name: 'Arc Systems Rough-In Complete', plannedDate: '2026-01-31', forecastDate: '2026-03-30', actualDate: null, variance: 58, status: 'at_risk', isCritical: true },
   { id: 'm005', name: 'Interior Finishes Complete', plannedDate: '2026-05-31', forecastDate: '2026-07-15', actualDate: null, variance: 45, status: 'at_risk', isCritical: false },
   { id: 'm006', name: 'Substantial Completion', plannedDate: '2026-08-31', forecastDate: '2026-11-14', actualDate: null, variance: 75, status: 'slipping', isCritical: true }
 ];
 
 const DEMO_CRITICAL_PATH = [
-  { id: 'cp001', name: 'Structure Topped Out', duration: 0, earlyStart: '2025-07-22', earlyFinish: '2025-07-22', float: 0, isMilestone: true },
-  { id: 'cp002', name: 'Install Curtain Wall - Levels 12-24', duration: 60, earlyStart: '2025-07-23', earlyFinish: '2025-10-21', float: -2, isMilestone: false },
-  { id: 'cp003', name: 'Building Enclosed Milestone', duration: 0, earlyStart: '2025-11-15', earlyFinish: '2025-11-15', float: 0, isMilestone: true },
-  { id: 'cp004', name: 'Rough-in MEP - Floors 1-8', duration: 55, earlyStart: '2025-11-17', earlyFinish: '2026-02-02', float: 0, isMilestone: false },
-  { id: 'cp005', name: 'Rough-in MEP - Floors 9-16', duration: 55, earlyStart: '2026-01-15', earlyFinish: '2026-04-01', float: 0, isMilestone: false },
-  { id: 'cp006', name: 'Install Chiller Plant Equipment', duration: 55, earlyStart: '2025-08-15', earlyFinish: '2025-10-30', float: 0, isMilestone: false },
-  { id: 'cp007', name: 'MEP Rough-In Complete', duration: 0, earlyStart: '2026-03-30', earlyFinish: '2026-03-30', float: 0, isMilestone: true },
-  { id: 'cp008', name: 'Interior Finishes - OR Suite & ICU', duration: 80, earlyStart: '2026-04-01', earlyFinish: '2026-07-20', float: 0, isMilestone: false },
-  { id: 'cp009', name: 'Commissioning & Testing', duration: 30, earlyStart: '2026-07-21', earlyFinish: '2026-09-03', float: 0, isMilestone: false },
+  { id: 'cp001', name: 'Tower Structure Topped Out', duration: 0, earlyStart: '2025-07-22', earlyFinish: '2025-07-22', float: 0, isMilestone: true },
+  { id: 'cp002', name: 'Install Stark Armour Cladding - Levels 12-24', duration: 60, earlyStart: '2025-07-23', earlyFinish: '2025-10-21', float: -2, isMilestone: false },
+  { id: 'cp003', name: 'Tower Exterior Enclosed', duration: 0, earlyStart: '2025-11-15', earlyFinish: '2025-11-15', float: 0, isMilestone: true },
+  { id: 'cp004', name: 'Rough-in Arc Systems - Floors 1-8', duration: 55, earlyStart: '2025-11-17', earlyFinish: '2026-02-02', float: 0, isMilestone: false },
+  { id: 'cp005', name: 'Rough-in Arc Systems - Floors 9-16', duration: 55, earlyStart: '2026-01-15', earlyFinish: '2026-04-01', float: 0, isMilestone: false },
+  { id: 'cp006', name: 'Install Arc Reactor Cooling System', duration: 55, earlyStart: '2025-08-15', earlyFinish: '2025-10-30', float: 0, isMilestone: false },
+  { id: 'cp007', name: 'Arc Systems Rough-In Complete', duration: 0, earlyStart: '2026-03-30', earlyFinish: '2026-03-30', float: 0, isMilestone: true },
+  { id: 'cp008', name: 'Interior Finishes - Labs & Command Suite', duration: 80, earlyStart: '2026-04-01', earlyFinish: '2026-07-20', float: 0, isMilestone: false },
+  { id: 'cp009', name: 'Arc Reactor Commissioning & Testing', duration: 30, earlyStart: '2026-07-21', earlyFinish: '2026-09-03', float: 0, isMilestone: false },
   { id: 'cp010', name: 'Substantial Completion', duration: 0, earlyStart: '2026-11-14', earlyFinish: '2026-11-14', float: 0, isMilestone: true }
 ];
 
@@ -246,15 +246,15 @@ const DEMO_COMPARISON = {
     logicChanges: 23
   },
   milestoneChanges: [
-    { id: 'm002', name: 'Structure Topped Out', priorForecast: '2025-07-15', currentForecast: '2025-07-22', variance: 7, direction: 'slipped' },
-    { id: 'm003', name: 'Building Enclosed', priorForecast: '2025-10-30', currentForecast: '2025-11-15', variance: 16, direction: 'slipped' },
-    { id: 'm004', name: 'MEP Rough-In Complete', priorForecast: '2026-02-28', currentForecast: '2026-03-30', variance: 30, direction: 'slipped' },
+    { id: 'm002', name: 'Tower Structure Topped Out', priorForecast: '2025-07-15', currentForecast: '2025-07-22', variance: 7, direction: 'slipped' },
+    { id: 'm003', name: 'Tower Exterior Enclosed', priorForecast: '2025-10-30', currentForecast: '2025-11-15', variance: 16, direction: 'slipped' },
+    { id: 'm004', name: 'Arc Systems Rough-In Complete', priorForecast: '2026-02-28', currentForecast: '2026-03-30', variance: 30, direction: 'slipped' },
     { id: 'm006', name: 'Substantial Completion', priorForecast: '2026-10-21', currentForecast: '2026-11-14', variance: 24, direction: 'slipped' }
   ],
   activityChanges: [
-    { id: 'A1042', name: 'Install Chiller Plant Equipment', changeType: 'date_change', priorStart: '2025-07-01', newStart: '2025-08-15', priorFinish: '2025-09-15', newFinish: '2025-10-30', startVariance: 45, finishVariance: 45, floatChange: -5 },
-    { id: 'A1093', name: 'Install Curtain Wall - Levels 12-16', changeType: 'date_change', priorStart: '2025-05-15', newStart: '2025-06-20', priorFinish: '2025-08-01', newFinish: '2025-09-10', startVariance: 36, finishVariance: 40, floatChange: -8 },
-    { id: 'A2099', name: 'Excavation - Parking Structure', changeType: 'completed', priorStart: '2024-03-15', newStart: '2024-03-15', priorFinish: '2024-06-01', newFinish: '2024-05-28', startVariance: 0, finishVariance: -4, floatChange: 0 }
+    { id: 'A1042', name: 'Install Arc Reactor Cooling System', changeType: 'date_change', priorStart: '2025-07-01', newStart: '2025-08-15', priorFinish: '2025-09-15', newFinish: '2025-10-30', startVariance: 45, finishVariance: 45, floatChange: -5 },
+    { id: 'A1093', name: 'Install Stark Armour Cladding - Levels 12-16', changeType: 'date_change', priorStart: '2025-05-15', newStart: '2025-06-20', priorFinish: '2025-08-01', newFinish: '2025-09-10', startVariance: 36, finishVariance: 40, floatChange: -8 },
+    { id: 'A2099', name: 'Excavation - Underground Lab Structure', changeType: 'completed', priorStart: '2024-03-15', newStart: '2024-03-15', priorFinish: '2024-06-01', newFinish: '2024-05-28', startVariance: 0, finishVariance: -4, floatChange: 0 }
   ]
 };
 
