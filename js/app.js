@@ -297,14 +297,35 @@ const App = {
     });
   },
 
-  renderProjectDashboard() {
+  // Shared helper — every page uses this to get the right project from URL or fallback
+  _resolveCurrentProject() {
     const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
-    const project = this.projects.find(p => p.id === projectId) || this.projects[0];
+    return this.projects.find(p => p.id === projectId) || this.projects[0] || null;
+  },
+
+  // Wire up all intra-app links to carry projectId so pages stay in sync
+  _injectProjectIdIntoLinks(project) {
+    if (!project) return;
+    document.querySelectorAll('a[href]').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      const isInternalPage = /^(project|diagnostics|comparison|upload)\.html/.test(href.split('/').pop());
+      if (isInternalPage && !href.includes('projectId=')) {
+        const sep = href.includes('?') ? '&' : '?';
+        a.setAttribute('href', `${href}${sep}projectId=${project.id}`);
+      }
+    });
+  },
+
+  renderProjectDashboard() {
+    const project = this._resolveCurrentProject();
     if (!project) return;
 
     // Use demo data for the showcase
     const scores = DEMO_CATEGORY_SCORES['v8'];
     const overallScore = project.latestScore;
+
+    // Wire all sidebar/header links to carry this project's ID
+    this._injectProjectIdIntoLinks(project);
 
     // Set project header info
     this.setEl('#projectName', project.name);
@@ -475,8 +496,25 @@ const App = {
   },
 
   renderDiagnostics() {
+    const project = this._resolveCurrentProject();
     const container = document.querySelector('#diagnosticsContainer');
     if (!container) return;
+
+    // Populate project-specific header elements
+    if (project) {
+      this._injectProjectIdIntoLinks(project);
+      const projectUrl = `project.html?projectId=${project.id}`;
+      const breadcrumb = document.getElementById('diagBreadcrumbLink');
+      if (breadcrumb) { breadcrumb.textContent = project.name; breadcrumb.href = projectUrl; }
+
+      // Build subtitle from the latest version for this project
+      const versions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+      const latest = versions.find(v => v.status === 'current') || versions[versions.length - 1];
+      const versionLabel = latest ? latest.version : 'Latest Update';
+      const dataDate = latest ? this.formatDate(latest.dataDate) : 'N/A';
+      const totalActivities = (window.DEMO_DIAGNOSTICS || []).reduce((max, d) => Math.max(max, d.totalActivities || 0), 0);
+      this.setEl('#diagSubtitle', `Schedule quality issues identified in ${versionLabel} (Data Date: ${dataDate})${totalActivities ? ` — ${totalActivities.toLocaleString()} activities analyzed` : ''}`);
+    }
 
     container.innerHTML = DEMO_DIAGNOSTICS.map(d => this.buildDiagnosticCard(d)).join('');
 
@@ -538,6 +576,49 @@ const App = {
 
   renderComparison() {
     const comp = DEMO_COMPARISON;
+    const project = this._resolveCurrentProject();
+
+    // Populate project-specific header elements
+    if (project) {
+      this._injectProjectIdIntoLinks(project);
+      const projectUrl = `project.html?projectId=${project.id}`;
+      const breadcrumb = document.getElementById('compBreadcrumbLink');
+      if (breadcrumb) { breadcrumb.textContent = project.name; breadcrumb.href = projectUrl; }
+
+      // Generate dynamic comparison narrative
+      const narrativeEl = document.getElementById('compNarrativeBody');
+      if (narrativeEl) {
+        const base = comp.baseline;
+        const curr = comp.current;
+        const s = comp.summary;
+        const scoreDir = s.scoreChange < 0 ? 'declined' : s.scoreChange > 0 ? 'improved' : 'remained unchanged';
+        const scoreDirAbs = Math.abs(s.scoreChange);
+        const baseScore = base.overallScore;
+        const currScore = curr.overallScore;
+        const currRag = currScore >= 80 ? 'Green' : currScore >= 65 ? 'Amber' : 'Red';
+
+        // Prior & current forecast finish from milestones comparison
+        const substComp = comp.milestoneChanges.find(m => m.name === 'Substantial Completion');
+        const priorForecastStr = substComp ? this.formatDate(substComp.priorForecast) : 'N/A';
+        const currForecastStr  = substComp ? this.formatDate(substComp.currentForecast) : 'N/A';
+
+        // Find the biggest activity change for the narrative
+        const biggestSlip = [...(comp.activityChanges || [])].sort((a, b) => b.finishVariance - a.finishVariance)[0];
+
+        narrativeEl.innerHTML = `
+          <p>This comparison covers <strong>${base.version} (${this.formatDate(base.dataDate)})</strong> to <strong>${curr.version} (${this.formatDate(curr.dataDate)})</strong> for the <strong>${project.name}</strong> project.</p>
+
+          <h4 style="margin:16px 0 8px;">Schedule Performance</h4>
+          <p>The critical path has slipped by <strong class="text-red">${s.criticalPathSlip} working days</strong> between updates${biggestSlip ? `, driven primarily by delays in ${biggestSlip.name} (+${biggestSlip.finishVariance}d)` : ''}. The project's forecast substantial completion date has moved from <strong>${priorForecastStr}</strong> to <strong>${currForecastStr}</strong>, a <strong class="text-red">${s.finishDateMovement}-working-day slip</strong> against the prior update.</p>
+
+          <h4 style="margin:16px 0 8px;">Validation Score</h4>
+          <p>The overall validation score ${scoreDir}${scoreDirAbs > 0 ? ` by ${scoreDirAbs} point${scoreDirAbs !== 1 ? 's' : ''}` : ''} from <strong>${baseScore}</strong> to <strong>${currScore}</strong>, remaining in the ${currRag} range. The primary drivers of score deterioration are (1) an increase in negative float activities by ${s.negativeFloatDelta}, indicating growing schedule pressure, and (2) continued open-end logic issues.</p>
+
+          <h4 style="margin:16px 0 8px;">Key Changes</h4>
+          <p>${s.activitiesChanged} activities experienced date changes during this period. ${s.activitiesAdded} new activities were added and ${s.activitiesDeleted} were deleted, reflecting scope clarifications. ${s.logicChanges} logic changes were also recorded between updates.</p>
+        `;
+      }
+    }
 
     // Summary cards
     const movements = [

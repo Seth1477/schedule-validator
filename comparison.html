@@ -65,7 +65,7 @@
   <main class="main-content">
     <div class="page-header">
       <div>
-        <div class="breadcrumb"><a href="dashboard.html">Projects</a> › <a href="project.html">Downtown Medical Center</a> › Comparison</div>
+        <div class="breadcrumb"><a href="dashboard.html">Projects</a> › <a href="#" id="compBreadcrumbLink">Project</a> › Comparison</div>
         <h1 class="page-title">Schedule Comparison</h1>
         <p class="page-subtitle">Analyze changes between two schedule versions side by side</p>
       </div>
@@ -265,17 +265,8 @@
             <h2 class="card-title">Comparison Narrative</h2>
             <button class="btn btn-secondary btn-sm" onclick="exportNarrative()">⬇ Export</button>
           </div>
-          <div class="narrative-body">
-            <p>This comparison covers <strong>Update 6 (Sep 1, 2025)</strong> to <strong>Update 7 (Jan 1, 2026)</strong> for the Downtown Medical Center Tower project.</p>
-
-            <h4 style="margin:16px 0 8px;">Schedule Performance</h4>
-            <p>The critical path has slipped by <strong class="text-red">18 working days</strong> between updates, driven primarily by delays in the curtain wall installation and MEP rough-in activities. The project's forecast substantial completion date has moved from <strong>October 21, 2026</strong> to <strong>November 14, 2026</strong>, a <strong class="text-red">24-working-day slip</strong> against the prior update.</p>
-
-            <h4 style="margin:16px 0 8px;">Validation Score</h4>
-            <p>The overall validation score declined by 1 point from <strong>72</strong> to <strong>71</strong>, remaining in the Amber range. The primary drivers of score deterioration are (1) an increase in negative float activities from 18 to 23, indicating growing schedule pressure, and (2) continued open-end logic issues in the MEP and structural scopes.</p>
-
-            <h4 style="margin:16px 0 8px;">Key Changes</h4>
-            <p>87 activities experienced date changes during this period. Notable changes include the chiller plant installation, which shifted +45 days, and curtain wall activities on levels 12-16, which shifted +40 days to finish. 12 new activities were added and 4 were deleted, reflecting scope clarifications in the MEP package.</p>
+          <div class="narrative-body" id="compNarrativeBody">
+            <p style="color:#94a3b8;font-style:italic;">Generating comparison narrative…</p>
 
             <h4 style="margin:16px 0 8px;">Recommended Actions</h4>
             <p>The project team should prioritize: (1) investigating the cause of the 18-day critical path slip and developing a recovery schedule; (2) addressing the 5 newly negative float activities with constraint or logic remediation; and (3) closing 8 new open-end logic gaps introduced since the last update.</p>
