@@ -306,7 +306,7 @@ function createProject() {
 
   // Show first-login tutorial after a short delay
   // v2 key — clears old dismissed state so fixed tutorial shows once more
-  const tutorialKey = 'cc_tutorial_seen_v2_' + user.email;
+  const tutorialKey = 'cc_tutorial_seen_v3_' + user.email;
   if (!localStorage.getItem(tutorialKey)) {
     setTimeout(() => showTutorial(), 800);
   }
@@ -315,7 +315,7 @@ function createProject() {
 /* ── First-login Tutorial ─────────────────────────────────── */
 function showTutorial() {
   const user = CC.Auth.currentUser();
-  if (user) localStorage.setItem('cc_tutorial_seen_v2_' + user.email, '1');
+  if (user) localStorage.setItem('cc_tutorial_seen_v3_' + user.email, '1');
 
   // Inject keyframe styles
   const style = document.createElement('style');
@@ -401,7 +401,7 @@ const TUT_STEPS = [
     position: 'below',
   },
   {
-    target: () => document.querySelector('a[href="upload.html"]') || document.querySelector('.sidebar-nav a:nth-child(2)'),
+    target: () => document.querySelector('.stats-row'),
     icon: '📊',
     title: 'Get your DCMA+ Score',
     body: 'After uploading, you\'ll instantly see a <strong>DCMA+ quality score</strong> across 6 categories — logic, critical path, constraints, and more.',
