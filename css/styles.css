@@ -2156,3 +2156,52 @@ body {
   margin: 4px 0 0;
 }
 
+
+/* ── AUTH: Sidebar user widget ─────────────────────────────── */
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(148,163,184,0.12);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+}
+.sidebar-user-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c6fe0, #a593f5);
+  color: #fff; font-size: 13px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-user-info { flex: 1; min-width: 0; }
+.sidebar-user-name {
+  font-size: 13px; font-weight: 600; color: #e2e8f0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-user-plan {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sidebar-user-plan.plan-free { color: #94a3b8; }
+.sidebar-user-plan.plan-pro  { color: #a593f5; }
+.sidebar-logout-btn {
+  background: none; border: none; cursor: pointer;
+  color: #64748b; padding: 4px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+.sidebar-logout-btn:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+
+/* Upload count badge in sidebar */
+.sidebar-upload-badge {
+  font-size: 11px; color: #94a3b8; padding: 0 20px 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.sidebar-upload-badge .badge-bar {
+  flex: 1; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;
+}
+.sidebar-upload-badge .badge-bar-fill {
+  height: 100%; background: #7c6fe0; border-radius: 2px; transition: width 0.4s;
+}
