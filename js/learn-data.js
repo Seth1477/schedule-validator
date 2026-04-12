@@ -1,4 +1,4 @@
-// learn-data.js — Centralized knowledge base for Schedule Validator
+// learn-data.js — Centralized knowledge base for Construct Check
 
 const LEARN_TOPICS = {
 
