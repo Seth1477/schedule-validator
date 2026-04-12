@@ -17,6 +17,9 @@ const App = {
     return `cc_${suffix}_${user}`;
   },
 
+  // Admin email — this account gets pre-seeded with demo projects
+  ADMIN_EMAIL: 'speterson1477@gmail.com',
+
   loadFromStorage() {
     try {
       const stored = localStorage.getItem(this._storageKey('projects'));
@@ -24,9 +27,19 @@ const App = {
         this.projects = JSON.parse(stored);
         this.scheduleVersions = JSON.parse(localStorage.getItem(this._storageKey('versions')) || '[]');
       } else {
-        // Brand new user — start with empty slate (no demo data)
-        this.projects = [];
-        this.scheduleVersions = [];
+        // First load for this user
+        const user = window.CC && CC.Auth.currentUser();
+        const email = user ? user.email.toLowerCase() : '';
+        if (email === this.ADMIN_EMAIL) {
+          // Admin gets the superhero demo projects
+          this.projects = DEMO_PROJECTS;
+          this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
+        } else {
+          // Everyone else starts completely empty
+          this.projects = [];
+          this.scheduleVersions = [];
+        }
+        this.saveToStorage();
       }
     } catch(e) {
       this.projects = [];

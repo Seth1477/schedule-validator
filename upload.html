@@ -208,15 +208,27 @@
 <script>
 let selectedFile = null;
 
-// Populate project select
+// Populate project select from the logged-in user's own projects
 document.addEventListener('DOMContentLoaded', () => {
   const sel = document.getElementById('uploadProjectSelect');
-  DEMO_PROJECTS.forEach(p => {
+
+  // App.projects is already loaded per-user by app.js
+  const projects = (window.App && App.projects) ? App.projects : [];
+
+  if (projects.length === 0) {
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
+    opt.value = '';
+    opt.textContent = 'No projects yet — create one on the Dashboard first';
+    opt.disabled = true;
     sel.appendChild(opt);
-  });
+  } else {
+    projects.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  }
 
   // Pre-select from query param
   const pid = new URLSearchParams(window.location.search).get('projectId');

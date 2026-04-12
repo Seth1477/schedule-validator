@@ -11,6 +11,9 @@
     USAGE: 'cc_usage',
   };
 
+  // Admin accounts — always Pro, never hit paywall
+  const ADMIN_EMAILS = ['speterson1477@gmail.com'];
+
   const FREE_UPLOAD_LIMIT = 2; // files before paywall
 
   /* ─── Helpers ─────────────────────────────────────────────── */
@@ -28,7 +31,10 @@
   function getUsage(email) {
     try {
       const all = JSON.parse(localStorage.getItem(STORAGE_KEYS.USAGE)) || {};
-      return all[email] || { uploads: 0, plan: 'free' };
+      const base = all[email] || { uploads: 0, plan: 'free' };
+      // Admin emails are always Pro
+      if (ADMIN_EMAILS.includes(email.toLowerCase())) base.plan = 'pro';
+      return base;
     } catch { return { uploads: 0, plan: 'free' }; }
   }
   function saveUsage(email, data) {
@@ -153,8 +159,10 @@
         el.textContent = user ? user.email : '';
       });
       document.querySelectorAll('[data-auth-plan]').forEach(el => {
-        el.textContent = usage.plan === 'pro' ? 'Pro' : 'Free';
-        el.className = (el.className || '').replace(/plan-\w+/g, '') + (usage.plan === 'pro' ? ' plan-pro' : ' plan-free');
+        const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
+        const label = isAdmin ? 'Admin ★' : (usage.plan === 'pro' ? 'Pro' : 'Free Trial');
+        el.textContent = label;
+        el.className = (el.className || '').replace(/plan-\w+/g, '') + (isAdmin || usage.plan === 'pro' ? ' plan-pro' : ' plan-free');
       });
       document.querySelectorAll('[data-auth-uploads]').forEach(el => {
         el.textContent = `${usage.uploads} / ${usage.plan === 'pro' ? '∞' : usage.limit}`;
@@ -204,6 +212,28 @@
     `;
     document.body.appendChild(overlay);
   }
+
+  /* ─── One-time migration: clear old shared storage key ─────── */
+  // Previous builds stored projects under 'sv_projects' (global).
+  // Remove it so per-user keys take over cleanly.
+  (function() {
+    if (localStorage.getItem('sv_projects')) {
+      localStorage.removeItem('sv_projects');
+      localStorage.removeItem('sv_versions');
+    }
+    // Also remove old per-user key if it was seeded with real project names
+    // (force re-seed by bumping the migration flag)
+    const migKey = 'cc_migration_v3';
+    if (!localStorage.getItem(migKey)) {
+      // Wipe any per-user project storage so admin gets superhero re-seed
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('cc_projects_') || k.startsWith('cc_versions_')) {
+          localStorage.removeItem(k);
+        }
+      });
+      localStorage.setItem(migKey, '1');
+    }
+  })();
 
   /* ─── Expose globally ───────────────────────────────────────── */
   window.CC = window.CC || {};
