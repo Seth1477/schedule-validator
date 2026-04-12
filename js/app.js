@@ -11,28 +11,33 @@ const App = {
     this.render();
   },
 
+  // Per-user storage keys — each account has its own project list
+  _storageKey(suffix) {
+    const user = (window.CC && CC.Auth.currentUser()) ? CC.Auth.currentUser().email : 'guest';
+    return `cc_${suffix}_${user}`;
+  },
+
   loadFromStorage() {
     try {
-      const stored = localStorage.getItem('sv_projects');
-      if (!stored) {
-        // Load demo data on first visit
-        this.projects = DEMO_PROJECTS;
-        this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
-        this.saveToStorage();
-      } else {
+      const stored = localStorage.getItem(this._storageKey('projects'));
+      if (stored) {
         this.projects = JSON.parse(stored);
-        this.scheduleVersions = JSON.parse(localStorage.getItem('sv_versions') || '[]');
+        this.scheduleVersions = JSON.parse(localStorage.getItem(this._storageKey('versions')) || '[]');
+      } else {
+        // Brand new user — start with empty slate (no demo data)
+        this.projects = [];
+        this.scheduleVersions = [];
       }
     } catch(e) {
-      this.projects = DEMO_PROJECTS;
-      this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
+      this.projects = [];
+      this.scheduleVersions = [];
     }
   },
 
   saveToStorage() {
     try {
-      localStorage.setItem('sv_projects', JSON.stringify(this.projects));
-      localStorage.setItem('sv_versions', JSON.stringify(this.scheduleVersions));
+      localStorage.setItem(this._storageKey('projects'), JSON.stringify(this.projects));
+      localStorage.setItem(this._storageKey('versions'), JSON.stringify(this.scheduleVersions));
     } catch(e) { console.warn('Storage save failed', e); }
   },
 
@@ -216,30 +221,62 @@ const App = {
     const container = document.querySelector('#projectsGrid');
     if (!container) return;
 
+    // Update stat cards from real data
+    const active = this.projects.filter(p => p.status === 'active');
+    const green  = this.projects.filter(p => this.getRAGClass(p.latestScore) === 'green').length;
+    const amber  = this.projects.filter(p => this.getRAGClass(p.latestScore) === 'amber').length;
+    const red    = this.projects.filter(p => this.getRAGClass(p.latestScore) === 'red').length;
+    const totalUploads = this.projects.reduce((s, p) => s + (p.uploads || 0), 0);
+    const setS = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setS('stat-active', active.length);
+    setS('stat-green',  green);
+    setS('stat-amber',  amber);
+    setS('stat-red',    red);
+    setS('stat-uploads', totalUploads);
+
     container.innerHTML = '';
+
+    if (this.projects.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1;text-align:center;padding:80px 24px;">
+          <div style="font-size:64px;margin-bottom:20px;">📂</div>
+          <h2 style="font-size:22px;font-weight:700;color:#1e1b4b;margin-bottom:10px;">No projects yet</h2>
+          <p style="color:#64748b;font-size:15px;max-width:420px;margin:0 auto 32px;line-height:1.6;">
+            Upload your first Primavera P6 XER file to get a DCMA+ quality score and start tracking your schedule health.
+          </p>
+          <a href="upload.html" class="btn btn-primary" id="emptyUploadBtn" style="font-size:15px;padding:12px 28px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload Your First Schedule
+          </a>
+        </div>`;
+      return;
+    }
+
     this.projects.forEach(proj => {
       const ragClass = this.getRAGClass(proj.latestScore);
       const card = document.createElement('div');
       card.className = 'project-card card';
+      card.dataset.rag = ragClass;
+      card.dataset.status = proj.status;
       card.innerHTML = `
         <div class="project-card-header">
           <div>
             <h3 class="project-name">${proj.name}</h3>
             <p class="project-client">${proj.client}</p>
           </div>
-          <span class="score-badge score-badge-${ragClass}">${proj.latestScore}</span>
+          <span class="score-badge score-badge-${ragClass}">${proj.latestScore ?? '—'}</span>
         </div>
-        <p class="project-desc">${proj.description}</p>
+        <p class="project-desc">${proj.description || ''}</p>
         <div class="project-meta">
-          <span>📍 ${proj.location}</span>
-          <span>💰 ${proj.contractValue}</span>
+          <span>📍 ${proj.location || 'TBD'}</span>
+          <span>💰 ${proj.contractValue || 'TBD'}</span>
           <span>📅 ${this.formatDate(proj.plannedFinish)}</span>
         </div>
         <div class="project-tags">
-          ${proj.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+          ${(proj.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}
         </div>
         <div class="project-card-footer">
-          <span class="uploads-count">${proj.uploads} schedule uploads</span>
+          <span class="uploads-count">${proj.uploads || 0} schedule uploads</span>
           <a href="project.html?projectId=${proj.id}" class="btn btn-primary btn-sm">View Dashboard →</a>
         </div>
       `;

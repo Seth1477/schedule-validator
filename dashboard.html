@@ -51,11 +51,14 @@
 
     <div class="sidebar-bottom">
       <div class="sidebar-user">
-        <div class="user-avatar">S</div>
+        <div class="user-avatar" id="userAvatarInitial">–</div>
         <div class="user-info">
-          <div class="user-name">Seth Peterson</div>
-          <div class="user-role">Project Admin</div>
+          <div class="user-name" data-auth-name>Loading…</div>
+          <div class="user-role" data-auth-plan>Free</div>
         </div>
+        <button class="sidebar-logout-btn" onclick="CC.Auth.logout()" title="Sign out">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
       </div>
     </div>
   </aside>
@@ -86,7 +89,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         </div>
         <div class="stat-info">
-          <div class="stat-value">3</div>
+          <div class="stat-value" id="stat-active">0</div>
           <div class="stat-label">Active Projects</div>
         </div>
       </div>
@@ -95,7 +98,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <div class="stat-info">
-          <div class="stat-value">1</div>
+          <div class="stat-value" id="stat-green">0</div>
           <div class="stat-label">Green (≥85)</div>
         </div>
       </div>
@@ -104,7 +107,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
         <div class="stat-info">
-          <div class="stat-value">1</div>
+          <div class="stat-value" id="stat-amber">0</div>
           <div class="stat-label">Amber (70–84)</div>
         </div>
       </div>
@@ -113,7 +116,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         </div>
         <div class="stat-info">
-          <div class="stat-value">1</div>
+          <div class="stat-value" id="stat-red">0</div>
           <div class="stat-label">Red (&lt;70)</div>
         </div>
       </div>
@@ -122,7 +125,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg>
         </div>
         <div class="stat-info">
-          <div class="stat-value">18</div>
+          <div class="stat-value" id="stat-uploads">0</div>
           <div class="stat-label">Total Uploads</div>
         </div>
       </div>
@@ -292,14 +295,216 @@ function createProject() {
 }
 </script>
 <script>
-// Auth guard
+// Auth guard + user state
 (function(){
-  if(!CC.Auth.currentUser()){
+  const user = CC.Auth.currentUser();
+  if(!user){
     window.location.href='login.html?redirect='+encodeURIComponent(window.location.pathname);
     return;
   }
   CC.Auth.renderUserState();
+
+  // Show first-login tutorial after a short delay
+  const tutorialKey = 'cc_tutorial_seen_' + user.email;
+  if (!localStorage.getItem(tutorialKey)) {
+    setTimeout(() => showTutorial(), 800);
+  }
 })();
+
+/* ── First-login Tutorial ─────────────────────────────────── */
+function showTutorial() {
+  // Mark as seen immediately so it never re-appears
+  const user = CC.Auth.currentUser();
+  if (user) localStorage.setItem('cc_tutorial_seen_' + user.email, '1');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'cc-tutorial';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:8000;pointer-events:none;
+  `;
+
+  overlay.innerHTML = `
+    <!-- Dark backdrop with a cutout over the Upload button -->
+    <div id="tut-backdrop" style="
+      position:fixed;inset:0;
+      background:rgba(13,11,30,0.72);
+      backdrop-filter:blur(2px);
+      pointer-events:all;
+    "></div>
+
+    <!-- Spotlight highlight (positioned via JS) -->
+    <div id="tut-spotlight" style="
+      position:fixed;
+      border-radius:12px;
+      box-shadow:0 0 0 4px #a593f5, 0 0 0 9999px rgba(13,11,30,0.72);
+      pointer-events:none;
+      transition:all 0.4s ease;
+      z-index:8001;
+    "></div>
+
+    <!-- Animated arrow + tooltip -->
+    <div id="tut-tooltip" style="
+      position:fixed;
+      background:#fff;
+      border-radius:16px;
+      padding:24px 28px;
+      max-width:300px;
+      box-shadow:0 16px 48px rgba(0,0,0,0.25);
+      z-index:8002;
+      pointer-events:all;
+    ">
+      <button onclick="closeTutorial()" style="
+        position:absolute;top:12px;right:12px;background:none;border:none;
+        cursor:pointer;color:#94a3b8;font-size:18px;line-height:1;padding:4px;
+      ">✕</button>
+
+      <!-- Step indicators -->
+      <div id="tut-steps" style="display:flex;gap:6px;margin-bottom:14px;">
+        <div class="tut-dot active" style="width:8px;height:8px;border-radius:50%;background:#7c6fe0;transition:background 0.3s;"></div>
+        <div class="tut-dot" style="width:8px;height:8px;border-radius:50%;background:#e2e8f0;transition:background 0.3s;"></div>
+        <div class="tut-dot" style="width:8px;height:8px;border-radius:50%;background:#e2e8f0;transition:background 0.3s;"></div>
+      </div>
+
+      <div id="tut-icon" style="font-size:32px;margin-bottom:10px;">👋</div>
+      <h3 id="tut-title" style="font-size:17px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Welcome to Construct Check!</h3>
+      <p id="tut-body" style="font-size:14px;color:#64748b;line-height:1.6;margin-bottom:20px;">
+        Let's get your first schedule analysed. It only takes a few seconds. Click <strong>Next</strong> to see how.
+      </p>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button onclick="closeTutorial()" style="background:none;border:none;cursor:pointer;font-size:13px;color:#94a3b8;">Skip tutorial</button>
+        <button id="tut-next-btn" onclick="tutorialNext()" style="
+          background:#7c6fe0;color:#fff;border:none;border-radius:8px;
+          padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;
+        ">Next →</button>
+      </div>
+    </div>
+
+    <!-- Animated pulse ring around spotlight -->
+    <div id="tut-pulse" style="
+      position:fixed;border-radius:14px;
+      border:3px solid rgba(165,147,245,0.6);
+      pointer-events:none;z-index:8000;
+      animation:tutPulse 1.4s ease-in-out infinite;
+    "></div>
+  `;
+
+  // Pulse animation
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes tutPulse {
+      0%   { transform: scale(1);   opacity: 0.8; }
+      50%  { transform: scale(1.06); opacity: 0.3; }
+      100% { transform: scale(1);   opacity: 0.8; }
+    }
+    @keyframes tutBounce {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-6px); }
+    }
+    #tut-arrow { animation: tutBounce 0.9s ease-in-out infinite; display:inline-block; }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(overlay);
+
+  // Start on step 0
+  window._tutStep = 0;
+  positionTutorial();
+}
+
+const TUT_STEPS = [
+  {
+    target: () => document.querySelector('a[href="upload.html"].btn-primary, a[href="upload.html"].btn'),
+    icon: '⬆️',
+    title: 'Upload a Schedule',
+    body: 'Click <strong>Upload Schedule</strong> to import a Primavera P6 XER file. This is where everything starts.',
+    position: 'below',
+  },
+  {
+    target: () => document.querySelector('a[href="upload.html"]') || document.querySelector('.sidebar-nav a:nth-child(2)'),
+    icon: '📊',
+    title: 'Get your DCMA+ Score',
+    body: 'After uploading, you\'ll instantly see a <strong>DCMA+ quality score</strong> across 6 categories — logic, critical path, constraints, and more.',
+    position: 'below',
+  },
+  {
+    target: () => document.querySelector('a[href="learn.html"]'),
+    icon: '🎓',
+    title: 'Learning Centre',
+    body: 'Not sure what a metric means? The <strong>Learning Centre</strong> explains every score, diagnostic, and threshold — great for your whole team.',
+    position: 'right',
+  },
+];
+
+function positionTutorial() {
+  const step = TUT_STEPS[window._tutStep];
+  const el = step.target();
+  const tooltip = document.getElementById('tut-tooltip');
+  const spotlight = document.getElementById('tut-spotlight');
+  const pulse = document.getElementById('tut-pulse');
+
+  // Update content
+  document.getElementById('tut-icon').textContent = step.icon;
+  document.getElementById('tut-title').textContent = step.title;
+  document.getElementById('tut-body').innerHTML = step.body;
+  const isLast = window._tutStep === TUT_STEPS.length - 1;
+  document.getElementById('tut-next-btn').textContent = isLast ? 'Got it! 🎉' : 'Next →';
+
+  // Update step dots
+  document.querySelectorAll('.tut-dot').forEach((d, i) => {
+    d.style.background = i === window._tutStep ? '#7c6fe0' : '#e2e8f0';
+  });
+
+  if (!el) { closeTutorial(); return; }
+
+  const r = el.getBoundingClientRect();
+  const pad = 10;
+
+  // Position spotlight
+  const sl = { top: r.top - pad, left: r.left - pad, width: r.width + pad*2, height: r.height + pad*2 };
+  spotlight.style.top = sl.top + 'px';
+  spotlight.style.left = sl.left + 'px';
+  spotlight.style.width = sl.width + 'px';
+  spotlight.style.height = sl.height + 'px';
+
+  // Pulse same position
+  pulse.style.top    = (sl.top - 4) + 'px';
+  pulse.style.left   = (sl.left - 4) + 'px';
+  pulse.style.width  = (sl.width + 8) + 'px';
+  pulse.style.height = (sl.height + 8) + 'px';
+
+  // Position tooltip — try to place below, fall back to above
+  const tw = 300, th = 220;
+  let tTop, tLeft;
+  if (step.position === 'right') {
+    tTop  = r.top + r.height / 2 - th / 2;
+    tLeft = r.right + 20;
+  } else if (r.bottom + th + 24 < window.innerHeight) {
+    tTop  = r.bottom + 20;
+    tLeft = r.left + r.width / 2 - tw / 2;
+  } else {
+    tTop  = r.top - th - 20;
+    tLeft = r.left + r.width / 2 - tw / 2;
+  }
+  tLeft = Math.max(12, Math.min(tLeft, window.innerWidth - tw - 12));
+  tTop  = Math.max(12, tTop);
+  tooltip.style.top  = tTop + 'px';
+  tooltip.style.left = tLeft + 'px';
+  tooltip.style.width = tw + 'px';
+}
+
+function tutorialNext() {
+  window._tutStep++;
+  if (window._tutStep >= TUT_STEPS.length) { closeTutorial(); return; }
+  positionTutorial();
+}
+
+function closeTutorial() {
+  const el = document.getElementById('cc-tutorial');
+  if (el) {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s';
+    setTimeout(() => el.remove(), 300);
+  }
+}
 </script>
 </body>
 </html>
