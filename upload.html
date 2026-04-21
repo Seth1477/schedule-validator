@@ -204,35 +204,45 @@
 <script src="js/xer-parser.js"></script>
 <script src="js/scoring.js"></script>
 <script src="js/critical-path.js"></script>
+<script src="js/datastore.js"></script>
 <script src="js/app.js"></script>
 <script>
 let selectedFile = null;
 
-// Populate project select from the logged-in user's own projects
+// Populate project select — includes "Auto-create" option
 document.addEventListener('DOMContentLoaded', () => {
   const sel = document.getElementById('uploadProjectSelect');
+  // Wait for async App.init() to finish before populating
+  const waitForApp = () => {
+    if (!App._ready) { setTimeout(waitForApp, 100); return; }
+    const projects = App.projects || [];
 
-  // App.projects is already loaded per-user by app.js
-  const projects = (window.App && App.projects) ? App.projects : [];
+    // Always add auto-create as the default first option
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '__auto__';
+    autoOpt.textContent = 'Auto-create new project from XER file (recommended)';
+    autoOpt.selected = true;
+    sel.appendChild(autoOpt);
 
-  if (projects.length === 0) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'No projects yet — create one on the Dashboard first';
-    opt.disabled = true;
-    sel.appendChild(opt);
-  } else {
-    projects.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      sel.appendChild(opt);
-    });
-  }
+    // Add existing projects as options too
+    if (projects.length > 0) {
+      const sep = document.createElement('option');
+      sep.disabled = true;
+      sep.textContent = '── Or add to existing project ──';
+      sel.appendChild(sep);
+      projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+    }
 
-  // Pre-select from query param
-  const pid = new URLSearchParams(window.location.search).get('projectId');
-  if (pid) sel.value = pid;
+    // Pre-select from query param if specified
+    const pid = new URLSearchParams(window.location.search).get('projectId');
+    if (pid) sel.value = pid;
+  };
+  waitForApp();
 });
 
 // File selection
@@ -280,10 +290,8 @@ function setStep(stepId, state) {
 }
 
 function resetOnError() {
-  // Hide progress section so user can try again without blank area
   document.getElementById('uploadProgress').style.display = 'none';
   document.getElementById('uploadBtn').disabled = false;
-  // Reset all step icons back to pending
   [['step-validate','1'],['step-parse','2'],['step-analyze','3'],['step-complete','4']].forEach(([id, num]) => {
     const el = document.getElementById(id)?.querySelector('.step-icon');
     if (el) { el.className = 'step-icon step-pending'; el.textContent = num; }
@@ -292,9 +300,9 @@ function resetOnError() {
 }
 
 async function startUpload() {
-  const projectId = document.getElementById('uploadProjectSelect').value;
-  if (!projectId) { App.showAlert('Please select a project.', 'error'); return; }
   if (!selectedFile) { App.showAlert('Please select a .xer file.', 'error'); return; }
+
+  const projectSelectVal = document.getElementById('uploadProjectSelect').value;
 
   document.getElementById('uploadProgress').style.display = 'block';
   document.getElementById('uploadBtn').disabled = true;
@@ -335,12 +343,23 @@ async function startUpload() {
       const cpAnalyzer = new CriticalPathAnalyzer();
       const cpResult = cpAnalyzer.analyze(parsed.activities, parsed.relationships);
 
-      // Count existing real (non-demo) versions for this project
+      // Determine target project: auto-create or use selected existing
+      let projectId;
+      if (projectSelectVal === '__auto__' || !projectSelectVal) {
+        // Auto-create a new project from the XER data
+        const newProj = App.createProjectFromXER(parsed, selectedFile.name);
+        projectId = newProj.id;
+        console.log('[Upload] Auto-created project:', newProj.name, '→', projectId);
+      } else {
+        projectId = projectSelectVal;
+      }
+
+      // Count existing real versions for this project
       const existingVersions = (App.scheduleVersions || []).filter(v => v.projectId === projectId && !v.isDemo);
       const versionLabel = document.getElementById('versionLabel').value ||
         `Update ${existingVersions.length + 1}`;
 
-      // Build trimmed critical path for storage (no activityMap — too large)
+      // Build trimmed critical path for storage
       const trimmedCP = {
         longestPath: (cpResult.longestPath || []).slice(0, 40).map(a => ({
           id: a.id, code: a.code, name: a.name || a.code || 'Activity',
@@ -361,7 +380,7 @@ async function startUpload() {
         totalFloat: m.totalFloat
       }));
 
-      // Trim scoring rules — strip large affectedIds arrays
+      // Trim scoring rules
       const trimmedScores = scores ? {
         ...scores,
         rules: (scores.rules || []).map(r => ({
@@ -412,7 +431,7 @@ async function startUpload() {
 
       setStep('step-analyze', 'done');
       setStep('step-complete', 'done');
-      document.getElementById('uploadStatus').textContent = `✅ Analysis complete! Score: ${version.overallScore}/100`;
+      document.getElementById('uploadStatus').textContent = `Analysis complete! Score: ${version.overallScore}/100`;
 
       await sleep(1200);
       window.location.href = `project.html?projectId=${projectId}&uploadId=${version.id}`;

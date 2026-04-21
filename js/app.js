@@ -1,59 +1,171 @@
-// app.js - Core Application Logic
+// app.js - Core Application Logic (v2 — IndexedDB-backed)
 
 const App = {
   currentProject: null,
   currentUpload: null,
+  projects: [],
+  scheduleVersions: [],
+  _ready: false,
 
-  init() {
-    this.loadFromStorage();
+  // ─── Initialization ──────────────────────────────────────────
+  // Async init: loads projects from localStorage (sync, fast) then
+  // loads versions from IndexedDB (async, large data).
+  async init() {
+    this._loadProjectsSync();       // projects from localStorage — instant
+    await this._loadVersionsAsync(); // versions from IndexedDB — reliable
+    this._ready = true;
     this.setupNavigation();
     this.setupEventListeners();
     this.render();
+    console.log('[App] Initialized —', this.projects.length, 'projects,', this.scheduleVersions.length, 'versions');
   },
 
-  // Per-user storage keys — each account has its own project list
+  // Per-user storage keys
   _storageKey(suffix) {
     const user = (window.CC && CC.Auth.currentUser()) ? CC.Auth.currentUser().email : 'guest';
     return `cc_${suffix}_${user}`;
   },
 
+  _currentEmail() {
+    return (window.CC && CC.Auth.currentUser()) ? CC.Auth.currentUser().email : 'guest';
+  },
+
   // Admin email — this account gets pre-seeded with demo projects
   ADMIN_EMAIL: 'speterson1477@gmail.com',
 
-  loadFromStorage() {
+  // ─── Storage: Load ───────────────────────────────────────────
+  _loadProjectsSync() {
     try {
       const stored = localStorage.getItem(this._storageKey('projects'));
       if (stored) {
         this.projects = JSON.parse(stored);
-        this.scheduleVersions = JSON.parse(localStorage.getItem(this._storageKey('versions')) || '[]');
       } else {
         // First load for this user
-        const user = window.CC && CC.Auth.currentUser();
-        const email = user ? user.email.toLowerCase() : '';
+        const email = this._currentEmail().toLowerCase();
         if (email === this.ADMIN_EMAIL) {
-          // Admin gets the superhero demo projects
           this.projects = DEMO_PROJECTS;
-          this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
         } else {
-          // Everyone else starts completely empty
           this.projects = [];
-          this.scheduleVersions = [];
         }
-        this.saveToStorage();
+        this._saveProjectsSync();
       }
     } catch(e) {
+      console.error('[App] _loadProjectsSync error:', e);
       this.projects = [];
-      this.scheduleVersions = [];
     }
   },
 
-  saveToStorage() {
+  async _loadVersionsAsync() {
     try {
-      localStorage.setItem(this._storageKey('projects'), JSON.stringify(this.projects));
-      localStorage.setItem(this._storageKey('versions'), JSON.stringify(this.scheduleVersions));
-    } catch(e) { console.warn('Storage save failed', e); }
+      const email = this._currentEmail();
+      const idbVersions = await DataStore.loadVersions(email);
+      if (idbVersions && idbVersions.length > 0) {
+        this.scheduleVersions = idbVersions;
+        console.log('[App] Loaded', idbVersions.length, 'versions from IndexedDB');
+        return;
+      }
+      // Fallback: try old localStorage key
+      const lsKey = this._storageKey('versions');
+      const lsData = localStorage.getItem(lsKey);
+      if (lsData) {
+        this.scheduleVersions = JSON.parse(lsData);
+        console.log('[App] Migrated', this.scheduleVersions.length, 'versions from localStorage → IndexedDB');
+        // Migrate to IndexedDB immediately
+        await DataStore.saveVersions(email, this.scheduleVersions);
+      } else {
+        // First load — seed demo versions for admin
+        const email2 = this._currentEmail().toLowerCase();
+        if (email2 === this.ADMIN_EMAIL && typeof DEMO_SCHEDULE_VERSIONS !== 'undefined') {
+          this.scheduleVersions = DEMO_SCHEDULE_VERSIONS;
+          await DataStore.saveVersions(email, this.scheduleVersions);
+        } else {
+          this.scheduleVersions = [];
+        }
+      }
+    } catch(e) {
+      console.error('[App] _loadVersionsAsync error:', e);
+      // Last-resort fallback
+      try {
+        const lsData = localStorage.getItem(this._storageKey('versions'));
+        this.scheduleVersions = lsData ? JSON.parse(lsData) : [];
+      } catch(e2) {
+        this.scheduleVersions = [];
+      }
+    }
   },
 
+  // ─── Storage: Save ───────────────────────────────────────────
+  _saveProjectsSync() {
+    try {
+      localStorage.setItem(this._storageKey('projects'), JSON.stringify(this.projects));
+    } catch(e) {
+      console.error('[App] _saveProjectsSync failed:', e);
+    }
+    // Also back up to IndexedDB (fire-and-forget)
+    DataStore.saveProjects(this._currentEmail(), this.projects).catch(() => {});
+  },
+
+  async _saveVersionsAsync() {
+    const email = this._currentEmail();
+    try {
+      await DataStore.saveVersions(email, this.scheduleVersions);
+      console.log('[App] Saved', this.scheduleVersions.length, 'versions to IndexedDB');
+    } catch(e) {
+      console.error('[App] _saveVersionsAsync failed:', e);
+    }
+  },
+
+  // Combined save — call this after any mutation
+  saveToStorage() {
+    this._saveProjectsSync();
+    this._saveVersionsAsync(); // async, no await needed from callers
+  },
+
+  // Legacy alias used by old code paths
+  loadFromStorage() {
+    this._loadProjectsSync();
+    // Note: versions need async load — call init() instead for full load
+  },
+
+  // ─── Project CRUD ────────────────────────────────────────────
+  createProjectFromXER(parsed, filename) {
+    const projName = parsed.project.fullName || parsed.project.name || filename.replace(/\.xer$/i, '');
+    const proj = {
+      id: 'proj-' + Date.now(),
+      name: projName,
+      client: parsed.project.companyName || 'Imported from XER',
+      contractValue: 'TBD',
+      contractType: 'TBD',
+      location: 'TBD',
+      startDate: parsed.project.plannedStart || '',
+      plannedFinish: parsed.project.plannedFinish || '',
+      description: `Imported from ${filename}`,
+      status: 'active',
+      tags: ['XER Import'],
+      uploads: 0,
+      latestScore: null,
+      latestScoreRag: null,
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0]
+    };
+    this.projects.push(proj);
+    this._saveProjectsSync();
+    return proj;
+  },
+
+  deleteProject(projectId) {
+    const idx = this.projects.findIndex(p => p.id === projectId);
+    if (idx === -1) return false;
+    const name = this.projects[idx].name;
+    this.projects.splice(idx, 1);
+    // Remove all versions for this project
+    this.scheduleVersions = this.scheduleVersions.filter(v => v.projectId !== projectId);
+    this.saveToStorage();
+    console.log(`[App] Deleted project "${name}" and its versions`);
+    return true;
+  },
+
+  // ─── Navigation & Events ─────────────────────────────────────
   getCurrentPage() {
     const path = window.location.pathname;
     const page = path.split('/').pop().replace('.html', '') || 'index';
@@ -66,7 +178,6 @@ const App = {
   },
 
   setupNavigation() {
-    // Mark active nav items
     const page = this.getCurrentPage();
     document.querySelectorAll('.sidebar-nav a').forEach(link => {
       const href = link.getAttribute('href') || '';
@@ -78,7 +189,6 @@ const App = {
   },
 
   setupEventListeners() {
-    // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const tabId = btn.dataset.tab;
@@ -91,7 +201,6 @@ const App = {
       });
     });
 
-    // Upload zone drag & drop
     const dropZone = document.querySelector('.upload-zone');
     if (dropZone) {
       dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -117,7 +226,6 @@ const App = {
       this.showAlert('Invalid file type. Only Primavera P6 .xer files are accepted.', 'error');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target.result;
@@ -141,7 +249,6 @@ const App = {
 
       const validationIssues = parser.validate(parsed);
       const errors = validationIssues.filter(i => i.severity === 'error');
-
       if (errors.length > 0) {
         this.showAlert(`XER validation failed: ${errors[0].message}`, 'error');
         return;
@@ -151,35 +258,39 @@ const App = {
 
       const engine = new ScoringEngine();
       const scores = engine.analyze(parsed);
-
       const cpAnalyzer = new CriticalPathAnalyzer();
       const cpResult = cpAnalyzer.analyze(parsed.activities, parsed.relationships);
 
-      const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
+      // Auto-create project from XER data
+      const project = this.createProjectFromXER(parsed, filename);
+
       const version = {
         id: 'v' + Date.now(),
-        projectId,
+        projectId: project.id,
         filename,
         dataDate: parsed.project.dataDate,
         uploadDate: new Date().toISOString().split('T')[0],
-        version: `Update ${this.scheduleVersions.filter(v => v.projectId === projectId).length + 1}`,
+        version: 'Update 1',
         overallScore: scores?.overallScore || 0,
         categoryScores: scores?.categoryScores || {},
         activityCount: parsed.activities.length,
         status: 'current',
         parsedData: parsed,
         analysisResults: scores,
-        criticalPath: cpResult
+        criticalPath: cpResult,
+        isReal: true
       };
 
       this.scheduleVersions.push(version);
+      project.latestScore = version.overallScore;
+      project.uploads = 1;
       this.saveToStorage();
 
       if (statusEl) statusEl.textContent = 'Analysis complete!';
       this.showAlert(`Schedule analyzed successfully. Overall Score: ${scores?.overallScore}/100`, 'success');
 
       setTimeout(() => {
-        window.location.href = `project.html?projectId=${projectId}&uploadId=${version.id}`;
+        window.location.href = `project.html?projectId=${project.id}&uploadId=${version.id}`;
       }, 1500);
 
     } catch(err) {
@@ -187,6 +298,7 @@ const App = {
     }
   },
 
+  // ─── Utilities ───────────────────────────────────────────────
   getRAGClass(score) {
     if (score >= 85) return 'green';
     if (score >= 70) return 'amber';
@@ -222,6 +334,7 @@ const App = {
     setTimeout(() => alert.remove(), 4000);
   },
 
+  // ─── Rendering ───────────────────────────────────────────────
   render() {
     const page = this.getCurrentPage();
     if (page === 'index' || page === '' || page === 'dashboard') this.renderProjectsList();
@@ -234,7 +347,6 @@ const App = {
     const container = document.querySelector('#projectsGrid');
     if (!container) return;
 
-    // Update stat cards from real data
     const active = this.projects.filter(p => p.status === 'active');
     const green  = this.projects.filter(p => this.getRAGClass(p.latestScore) === 'green').length;
     const amber  = this.projects.filter(p => this.getRAGClass(p.latestScore) === 'amber').length;
@@ -290,20 +402,33 @@ const App = {
         </div>
         <div class="project-card-footer">
           <span class="uploads-count">${proj.uploads || 0} schedule uploads</span>
-          <a href="project.html?projectId=${proj.id}" class="btn btn-primary btn-sm">View Dashboard →</a>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;" onclick="event.stopPropagation();App.confirmDeleteProject('${proj.id}','${proj.name.replace(/'/g, "\\'")}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Delete
+            </button>
+            <a href="project.html?projectId=${proj.id}" class="btn btn-primary btn-sm">View Dashboard →</a>
+          </div>
         </div>
       `;
       container.appendChild(card);
     });
   },
 
-  // Shared helper — every page uses this to get the right project from URL or fallback
+  confirmDeleteProject(projectId, projectName) {
+    if (confirm(`Delete "${projectName}" and all its uploaded schedules? This cannot be undone.`)) {
+      this.deleteProject(projectId);
+      this.renderProjectsList();
+      this.showAlert(`Project "${projectName}" deleted.`, 'success');
+    }
+  },
+
+  // ─── Project Resolution ──────────────────────────────────────
   _resolveCurrentProject() {
     const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
     return this.projects.find(p => p.id === projectId) || this.projects[0] || null;
   },
 
-  // Wire up all intra-app links to carry projectId so pages stay in sync
   _injectProjectIdIntoLinks(project) {
     if (!project) return;
     document.querySelectorAll('a[href]').forEach(a => {
@@ -316,23 +441,19 @@ const App = {
     });
   },
 
-  // Resolve the specific version to display for a project
   _resolveCurrentVersion(project) {
     if (!project) return null;
     const uploadId = this.getQueryParam('uploadId');
     const projectVersions = (this.scheduleVersions || []).filter(v => v.projectId === project.id);
 
-    // 1. Specific uploadId from URL (after a fresh upload redirect)
     if (uploadId) {
       const v = projectVersions.find(v => v.id === uploadId);
       if (v) return v;
     }
 
-    // 2. Latest 'current' version for this project (real uploads first)
     const realCurrent = projectVersions.filter(v => v.isReal).sort((a, b) => (b.id > a.id ? 1 : -1));
     if (realCurrent.length > 0) return realCurrent[0];
 
-    // 3. Latest demo version (for demo projects with no real uploads)
     const current = projectVersions.find(v => v.status === 'current');
     if (current) return current;
     if (projectVersions.length > 0) return projectVersions[projectVersions.length - 1];
@@ -340,22 +461,18 @@ const App = {
     return null;
   },
 
+  // ─── Project Dashboard ───────────────────────────────────────
   renderProjectDashboard() {
     const project = this._resolveCurrentProject();
     if (!project) return;
 
-    // Resolve the version to display — prefers real uploaded data
     const version = this._resolveCurrentVersion(project);
-
-    // Use real analysis data if this version has it, otherwise fall back to demo data
     const hasRealData = version && version.isReal && version.analysisResults;
     const scores = hasRealData ? version.analysisResults.categoryScores : (DEMO_CATEGORY_SCORES['v8'] || {});
     const overallScore = hasRealData ? version.overallScore : project.latestScore;
 
-    // Wire all sidebar/header links to carry this project's ID
     this._injectProjectIdIntoLinks(project);
 
-    // Set project header info
     this.setEl('#projectName', project.name);
     this.setEl('#projectTitle', project.name);
     this.setEl('#projectClient', project.client);
@@ -364,12 +481,10 @@ const App = {
     this.setEl('#projectDataDate', this.formatDate(hasRealData ? version.dataDate : '2026-01-01'));
     this.setEl('#projectPlannedFinish', this.formatDate(hasRealData ? (version.plannedFinish || project.plannedFinish) : project.plannedFinish));
 
-    // Show filename & XER project name if it's a real upload
     if (hasRealData && version.xerProjectName) {
       this.setEl('#projectClient', version.xerProjectName);
     }
 
-    // Overall score
     this.setEl('#overallScore', overallScore);
     const scoreEl = document.querySelector('#overallScoreRing');
     if (scoreEl) {
@@ -377,7 +492,6 @@ const App = {
       scoreEl.className = `score-ring score-ring-${this.getRAGClass(overallScore)}`;
     }
 
-    // Category scores
     Object.entries(scores).forEach(([key, cat]) => {
       const el = document.querySelector(`#cat_${key}`);
       if (el) {
@@ -387,7 +501,6 @@ const App = {
       }
     });
 
-    // Quick Stats — use real data if available
     if (hasRealData && version.analysisResults) {
       const ar = version.analysisResults;
       this.setEl('.metric-value.text-red:first-of-type', ar.negativeFloatCount || 0);
@@ -406,13 +519,8 @@ const App = {
       }
     }
 
-    // Executive narrative
     this.renderNarrative(project, overallScore, scores, hasRealData ? version : null);
-
-    // Milestones
     this.renderMilestones(hasRealData ? version : null);
-
-    // Score trend chart
     this.renderScoreTrendChart(project, hasRealData ? version : null);
   },
 
@@ -423,7 +531,6 @@ const App = {
     const ragLabel = overallScore >= 85 ? 'Green' : overallScore >= 70 ? 'Amber' : 'Red';
     const ragClass = overallScore >= 85 ? 'text-green' : overallScore >= 70 ? 'text-amber' : 'text-red';
 
-    // Find worst scoring category
     let worstCat = null, worstScore = 101;
     if (scores) {
       Object.values(scores).forEach(cat => {
@@ -435,7 +542,6 @@ const App = {
     const logicRag = logicScore !== null ? (logicScore >= 85 ? 'Green' : logicScore >= 70 ? 'Amber' : 'Red') : null;
     const logicClass = logicScore !== null ? (logicScore >= 85 ? 'text-green' : logicScore >= 70 ? 'text-amber' : 'text-red') : '';
 
-    // Source data: real version or demo fallback
     const isReal = version && version.isReal;
     const rules = isReal ? (version.analysisResults?.rules || []) : [];
 
@@ -450,7 +556,6 @@ const App = {
       return latest ? this.formatDate(latest.dataDate) : 'N/A';
     })();
 
-    // Pull rule counts from real analysis or demo
     const getCount = (ruleKey) => {
       if (isReal) {
         const rule = rules.find(r => r.ruleKey === ruleKey);
@@ -503,7 +608,6 @@ const App = {
     const container = document.querySelector('#milestonesTable');
     if (!container) return;
 
-    // Use real milestones from uploaded version if available
     if (version && version.isReal && version.milestones && version.milestones.length > 0) {
       container.innerHTML = version.milestones.map(m => {
         const isCritical = m.totalFloat !== undefined && m.totalFloat <= 0;
@@ -522,7 +626,6 @@ const App = {
       return;
     }
 
-    // Fallback to demo milestones
     container.innerHTML = DEMO_MILESTONES.map(m => {
       const varClass = m.variance > 30 ? 'text-red' : m.variance > 10 ? 'text-amber' : 'text-green';
       const statusLabel = { complete: 'Complete', slipping: 'Slipping', at_risk: 'At Risk', on_track: 'On Track' }[m.status] || m.status;
@@ -538,20 +641,18 @@ const App = {
   },
 
   renderScoreTrendChart(project, version) {
-    // This method is now called from renderProjectDashboard which uses project.html's own chart.
-    // Left as no-op — chart is rendered by project.html's renderTrendChart().
+    // No-op — chart is rendered by project.html's renderTrendChart().
   },
 
+  // ─── Diagnostics ─────────────────────────────────────────────
   renderDiagnostics() {
     const project = this._resolveCurrentProject();
     const container = document.querySelector('#diagnosticsContainer');
     if (!container) return;
 
-    // Resolve real version data
     const version = project ? this._resolveCurrentVersion(project) : null;
     const hasRealData = version && version.isReal && version.analysisResults;
 
-    // Populate project-specific header elements
     if (project) {
       this._injectProjectIdIntoLinks(project);
       const projectUrl = `project.html?projectId=${project.id}`;
@@ -571,17 +672,14 @@ const App = {
       }
     }
 
-    // Build diagnostic cards from real rules or fallback to demo
     if (hasRealData && version.analysisResults.rules) {
       const rules = version.analysisResults.rules.filter(r => r.count > 0);
-      // Sort by penalty descending — most impactful first
       rules.sort((a, b) => b.penalty - a.penalty);
       container.innerHTML = rules.map(r => this.buildRuleDiagnosticCard(r)).join('');
     } else {
       container.innerHTML = DEMO_DIAGNOSTICS.map(d => this.buildDiagnosticCard(d)).join('');
     }
 
-    // Setup drill-down toggles
     container.querySelectorAll('.diag-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const panel = btn.closest('.diagnostic-card').querySelector('.diag-detail');
@@ -592,7 +690,6 @@ const App = {
     });
   },
 
-  // Build a diagnostic card from a real scoring rule
   buildRuleDiagnosticCard(rule) {
     const sevClass = { critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' }[rule.severity] || 'badge-info';
     const catLabel = {
@@ -667,18 +764,17 @@ const App = {
     `;
   },
 
+  // ─── Comparison ──────────────────────────────────────────────
   renderComparison() {
     const comp = DEMO_COMPARISON;
     const project = this._resolveCurrentProject();
 
-    // Populate project-specific header elements
     if (project) {
       this._injectProjectIdIntoLinks(project);
       const projectUrl = `project.html?projectId=${project.id}`;
       const breadcrumb = document.getElementById('compBreadcrumbLink');
       if (breadcrumb) { breadcrumb.textContent = project.name; breadcrumb.href = projectUrl; }
 
-      // Generate dynamic comparison narrative
       const narrativeEl = document.getElementById('compNarrativeBody');
       if (narrativeEl) {
         const base = comp.baseline;
@@ -690,12 +786,10 @@ const App = {
         const currScore = curr.overallScore;
         const currRag = currScore >= 80 ? 'Green' : currScore >= 65 ? 'Amber' : 'Red';
 
-        // Prior & current forecast finish from milestones comparison
         const substComp = comp.milestoneChanges.find(m => m.name === 'Substantial Completion');
         const priorForecastStr = substComp ? this.formatDate(substComp.priorForecast) : 'N/A';
         const currForecastStr  = substComp ? this.formatDate(substComp.currentForecast) : 'N/A';
 
-        // Find the biggest activity change for the narrative
         const biggestSlip = [...(comp.activityChanges || [])].sort((a, b) => b.finishVariance - a.finishVariance)[0];
 
         narrativeEl.innerHTML = `
@@ -713,7 +807,6 @@ const App = {
       }
     }
 
-    // Summary cards
     const movements = [
       { id: 'finishMovement', label: 'Finish Date Movement', value: `+${comp.summary.finishDateMovement}d`, rag: 'red' },
       { id: 'cpSlip', label: 'Critical Path Slip', value: `+${comp.summary.criticalPathSlip}d`, rag: 'red' },
@@ -729,7 +822,6 @@ const App = {
       }
     });
 
-    // Milestone changes table
     const milestoneContainer = document.querySelector('#milestoneChanges');
     if (milestoneContainer) {
       milestoneContainer.innerHTML = comp.milestoneChanges.map(m => `
@@ -743,7 +835,6 @@ const App = {
       `).join('');
     }
 
-    // Activity changes
     const actContainer = document.querySelector('#activityChanges');
     if (actContainer) {
       actContainer.innerHTML = comp.activityChanges.map(a => `
@@ -765,5 +856,6 @@ const App = {
   }
 };
 
+// Async init — wait for DataStore to be ready
 document.addEventListener('DOMContentLoaded', () => App.init());
 window.App = App;
