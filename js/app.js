@@ -857,5 +857,17 @@ const App = {
 };
 
 // Async init — wait for DataStore to be ready
+// Exposes App.ready promise so page-specific scripts can await data loading
+App._readyPromise = null;
+App._readyResolve = null;
+App._readyPromise = new Promise(resolve => { App._readyResolve = resolve; });
+const _origInit = App.init.bind(App);
+App.init = async function() {
+  await _origInit();
+  if (App._readyResolve) App._readyResolve();
+};
+// Convenience: App.whenReady() returns a promise that resolves when init is done
+App.whenReady = function() { return App._readyPromise; };
+
 document.addEventListener('DOMContentLoaded', () => App.init());
 window.App = App;

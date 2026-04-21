@@ -347,32 +347,60 @@
 <script src="js/datastore.js"></script>
 <script src="js/app.js"></script>
 <script>
-// Get the current project & version using App helpers
+/*  ═══════════════════════════════════════════════════════════════
+    PROJECT DASHBOARD — all tab renderers
+    CRITICAL: App.init() is async (IndexedDB). We MUST await
+    App.whenReady() before touching App.scheduleVersions.
+    ═══════════════════════════════════════════════════════════════ */
+
+// Helper — resolves project + version AFTER data is loaded
 function getCurrentVersion() {
   const project = App._resolveCurrentProject();
-  if (!project) return { project: null, version: null };
+  if (!project) return { project: null, version: null, hasReal: false };
   const version = App._resolveCurrentVersion(project);
-  return { project, version };
+  const hasReal = !!(version && version.isReal && version.analysisResults);
+  return { project, version, hasReal };
 }
 
-// Render critical path table
+// ────────────────────────────────────────────────────────────────
+// CRITICAL PATH TAB
+// ────────────────────────────────────────────────────────────────
 function renderCriticalPath() {
   const tbody = document.getElementById('criticalPathTable');
   if (!tbody) return;
 
-  const { project, version } = getCurrentVersion();
-  const hasRealCP = version && version.isReal && version.criticalPath && version.criticalPath.longestPath && version.criticalPath.longestPath.length > 0;
+  const { project, version, hasReal } = getCurrentVersion();
+  const hasRealCP = hasReal && version.criticalPath && version.criticalPath.longestPath && version.criticalPath.longestPath.length > 0;
+
+  // Update the summary stat cards from real data
+  const cpSummaryBadge = document.querySelector('#tab-critical-path .badge.badge-critical');
+  const metricValues = document.querySelectorAll('#tab-critical-path .metric-value');
 
   if (hasRealCP) {
-    // Render real critical path from uploaded XER analysis
     const cp = version.criticalPath;
+    const ar = version.analysisResults || {};
+    const rules = ar.rules || [];
 
-    // Update summary stats
-    const summaryBadge = document.querySelector('#tab-critical-path .badge.badge-critical');
-    if (summaryBadge) summaryBadge.textContent = `Longest Path: ${Math.round(cp.projectDuration || 0)} Working Days`;
-    const critCountEl = document.querySelectorAll('#tab-critical-path .metric-value')[2];
-    if (critCountEl) critCountEl.textContent = cp.criticalCount || 0;
+    // Longest Path badge
+    if (cpSummaryBadge) cpSummaryBadge.textContent = `Longest Path: ${Math.round(cp.projectDuration || 0)} Working Days`;
 
+    // Metric cards: [0] = slippage (no baseline = N/A), [1] = near-critical, [2] = negative float
+    if (metricValues[0]) {
+      metricValues[0].textContent = 'N/A';
+      metricValues[0].className = 'metric-value text-secondary';
+      const label0 = metricValues[0].parentElement.querySelector('.metric-label');
+      if (label0) label0.textContent = 'vs. Baseline (no baseline yet)';
+    }
+    if (metricValues[1]) {
+      const nearCrit = rules.find(r => r.ruleKey === 'NEAR_CRITICAL_DENSITY');
+      metricValues[1].textContent = nearCrit ? nearCrit.count : 0;
+    }
+    if (metricValues[2]) {
+      const negFloat = rules.find(r => r.ruleKey === 'NEGATIVE_FLOAT');
+      metricValues[2].textContent = negFloat ? negFloat.count : 0;
+    }
+
+    // Table rows
     tbody.innerHTML = cp.longestPath.map((act, i) => {
       const isMilestone = act.type === 'TT_Mile' || act.type === 'TT_FinMile' || act.type === 'TT_StartMile' || act.duration === 0;
       const floatVal = act.totalFloat !== undefined ? Math.round(act.totalFloat) : 0;
@@ -388,7 +416,7 @@ function renderCriticalPath() {
       </tr>`;
     }).join('');
   } else {
-    // Fallback to demo critical path
+    // Demo project fallback
     tbody.innerHTML = DEMO_CRITICAL_PATH.map((act, i) => `
       <tr class="${act.isMilestone ? 'milestone-row' : ''}">
         <td>${i + 1}</td>
@@ -403,7 +431,31 @@ function renderCriticalPath() {
   }
 }
 
-// Render version history — combines demo + real uploaded versions
+// ────────────────────────────────────────────────────────────────
+// MILESTONES TAB — update summary badges at top
+// ────────────────────────────────────────────────────────────────
+function renderMilestoneSummary() {
+  const summaryDiv = document.querySelector('.milestone-summary');
+  if (!summaryDiv) return;
+
+  const { version, hasReal } = getCurrentVersion();
+  if (hasReal && version.milestones && version.milestones.length > 0) {
+    const milestones = version.milestones;
+    const complete = milestones.filter(m => !!m.actualFinish).length;
+    const critical = milestones.filter(m => m.totalFloat !== undefined && m.totalFloat <= 0 && !m.actualFinish).length;
+    const scheduled = milestones.length - complete - critical;
+    summaryDiv.innerHTML = `
+      <span class="badge" style="background:#22c55e20;color:#16a34a">${complete} Complete</span>
+      ${critical > 0 ? `<span class="badge badge-critical">${critical} Critical</span>` : ''}
+      <span class="badge badge-medium">${milestones.length} Total Milestones</span>
+    `;
+  }
+  // else leave demo defaults
+}
+
+// ────────────────────────────────────────────────────────────────
+// VERSION HISTORY TAB
+// ────────────────────────────────────────────────────────────────
 function renderVersionHistory() {
   const tbody = document.getElementById('versionHistoryTable');
   if (!tbody) return;
@@ -411,20 +463,37 @@ function renderVersionHistory() {
   const { project } = getCurrentVersion();
   if (!project) return;
 
-  // Combine demo versions for this project + real uploaded versions
-  const demoVersions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+  // Is this a demo project (has demo seed versions)?
+  const isDemoProject = ['proj-001', 'proj-002', 'proj-003'].includes(project.id);
+
+  // Get real uploaded versions for this project
   const realVersions = (App.scheduleVersions || []).filter(v => v.projectId === project.id && v.isReal);
-  const allVersions = [...demoVersions.map(v => ({ ...v, isDemo: true })), ...realVersions];
+
+  // For demo projects, also include demo versions; for real projects, only real
+  let allVersions;
+  if (isDemoProject) {
+    const demoVersions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+    allVersions = [...demoVersions.map(v => ({ ...v, isDemo: true })), ...realVersions];
+  } else {
+    allVersions = [...realVersions];
+  }
+
+  if (allVersions.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8;">No schedule versions uploaded yet. <a href="upload.html?projectId=${project.id}">Upload one now.</a></td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = allVersions.slice().reverse().map(v => {
     const ragClass = App.getRAGClass(v.overallScore);
-    const statusBadge = v.status === 'published' ? '<span class="badge badge-info">Published</span>' : '<span class="badge badge-medium">Current</span>';
+    const statusBadge = v.status === 'current'
+      ? '<span class="badge badge-medium">Current</span>'
+      : '<span class="badge badge-info">Published</span>';
     const realTag = v.isReal ? ' <span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:10px;">Uploaded</span>' : '';
     return `<tr>
       <td><strong>${v.version}</strong>${realTag}</td>
       <td>${App.formatDate(v.dataDate)}</td>
       <td>${App.formatDate(v.uploadDate)}</td>
-      <td class="text-sm text-secondary">${v.filename}</td>
+      <td class="text-sm text-secondary">${v.filename || '—'}</td>
       <td><span class="score-pill score-pill-${ragClass}">${v.overallScore}</span></td>
       <td>${statusBadge}</td>
       <td>
@@ -434,33 +503,56 @@ function renderVersionHistory() {
   }).join('');
 }
 
-function exportNarrative() {
-  const text = document.getElementById('narrativeText')?.innerText || '';
-  const blob = new Blob([text], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'Schedule_Narrative_Report.txt';
-  a.click();
-  App.showAlert('Narrative exported.', 'success');
-}
-
-// Render score trend chart — combines demo + real version scores
+// ────────────────────────────────────────────────────────────────
+// SCORE TREND CHART
+// ────────────────────────────────────────────────────────────────
 function renderTrendChart() {
   const canvas = document.getElementById('scoreTrendChart');
   if (!canvas || !window.Chart) return;
 
   const { project } = getCurrentVersion();
+  if (!project) return;
 
-  // Combine demo + real version scores for the trend
-  const demoHistory = (window.DEMO_SCORE_HISTORY || []);
-  const realVersions = (App.scheduleVersions || []).filter(v => v.projectId === (project ? project.id : '') && v.isReal);
+  const isDemoProject = ['proj-001', 'proj-002', 'proj-003'].includes(project.id);
 
-  // If we have real uploads for this project, append them to the trend
+  // Gather real uploaded version scores for this project
+  const realVersions = (App.scheduleVersions || []).filter(v => v.projectId === project.id && v.isReal);
   const realPoints = realVersions.map(v => ({ version: v.version, overallScore: v.overallScore }));
 
-  // Use demo history only for the demo project, otherwise just show real uploads
-  const isDemoProject = project && ['proj-001', 'proj-002', 'proj-003'].includes(project.id);
-  const chartData = isDemoProject ? [...demoHistory, ...realPoints] : (realPoints.length > 0 ? realPoints : demoHistory);
+  let chartData;
+  if (isDemoProject) {
+    // Demo projects: show demo history + any real uploads
+    const demoHistory = (window.DEMO_SCORE_HISTORY || []);
+    chartData = [...demoHistory, ...realPoints];
+  } else {
+    // Real projects: show ONLY their real uploads
+    chartData = realPoints;
+  }
+
+  // Update the trend badge based on direction
+  const trendBadge = document.querySelector('.card-badge');
+  if (trendBadge && chartData.length >= 2) {
+    const last = chartData[chartData.length - 1].overallScore;
+    const prev = chartData[chartData.length - 2].overallScore;
+    if (last > prev) {
+      trendBadge.textContent = 'Improving';
+      trendBadge.className = 'card-badge badge-low';
+    } else if (last < prev) {
+      trendBadge.textContent = 'Declining';
+      trendBadge.className = 'card-badge badge-critical';
+    } else {
+      trendBadge.textContent = 'Stable';
+      trendBadge.className = 'card-badge badge-medium';
+    }
+  } else if (trendBadge && chartData.length <= 1) {
+    trendBadge.textContent = chartData.length === 1 ? 'First Upload' : 'No Data';
+    trendBadge.className = 'card-badge badge-info';
+  }
+
+  if (chartData.length === 0) {
+    canvas.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#94a3b8;">Upload schedule updates to see score trends</div>';
+    return;
+  }
 
   const labels = chartData.map(h => h.version);
   const data = chartData.map(h => h.overallScore);
@@ -496,15 +588,16 @@ function renderTrendChart() {
   });
 }
 
-// Render the Scoring Methodology table dynamically
+// ────────────────────────────────────────────────────────────────
+// SCORING METHODOLOGY TABLE
+// ────────────────────────────────────────────────────────────────
 function renderScoringTable() {
   const tbody = document.getElementById('scoringTableBody');
   if (!tbody) return;
 
-  const { version } = getCurrentVersion();
-  const hasReal = version && version.isReal && version.categoryScores;
-  const scores = hasReal ? version.categoryScores : (DEMO_CATEGORY_SCORES['v8'] || {});
-  const overallScore = hasReal ? version.overallScore : 71;
+  const { version, hasReal } = getCurrentVersion();
+  const scores = hasReal ? version.categoryScores : (version && version.categoryScores ? version.categoryScores : (DEMO_CATEGORY_SCORES['v8'] || {}));
+  const overallScore = hasReal ? version.overallScore : (version ? version.overallScore : 71);
 
   const categories = [
     { key: 'logicQuality', label: 'Logic Quality', weight: 25, rules: 'Open ends, excessive lag, relationship density' },
@@ -517,15 +610,15 @@ function renderScoringTable() {
 
   let rows = categories.map(cat => {
     const s = scores[cat.key]?.score ?? '—';
-    const ragClass = s >= 85 ? 'text-green' : s >= 70 ? 'text-amber' : 'text-red';
-    const ragBadge = s >= 85 ? 'badge-low' : s >= 70 ? 'badge-medium' : 'badge-critical';
-    const ragLabel = s >= 85 ? 'Green' : s >= 70 ? 'Amber' : 'Red';
+    const ragClass = s === '—' ? '' : (s >= 85 ? 'text-green' : s >= 70 ? 'text-amber' : 'text-red');
+    const ragBadge = s === '—' ? 'badge-info' : (s >= 85 ? 'badge-low' : s >= 70 ? 'badge-medium' : 'badge-critical');
+    const ragLabel = s === '—' ? '—' : (s >= 85 ? 'Green' : s >= 70 ? 'Amber' : 'Red');
     const wContrib = s !== '—' ? (s * cat.weight / 100).toFixed(1) : '—';
     return `<tr>
       <td><strong>${cat.label}</strong></td>
       <td>${cat.weight}%</td>
       <td class="${ragClass} font-bold">${s}</td>
-      <td><span class="badge ${ragBadge}">${s !== '—' ? ragLabel : '—'}</span></td>
+      <td><span class="badge ${ragBadge}">${ragLabel}</span></td>
       <td>${cat.rules}</td>
       <td>${wContrib} pts</td>
     </tr>`;
@@ -540,14 +633,36 @@ function renderScoringTable() {
     <td class="${oRagClass} font-bold" style="font-size:1.2em">${overallScore}</td>
     <td><span class="badge ${oRagBadge}" style="font-size:0.9em">${oRagLabel}</span></td>
     <td>—</td>
-    <td><strong>${overallScore.toFixed ? overallScore.toFixed(1) : overallScore} pts</strong></td>
+    <td><strong>${typeof overallScore === 'number' ? overallScore.toFixed(1) : overallScore} pts</strong></td>
   </tr>`;
 
   tbody.innerHTML = rows;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// ────────────────────────────────────────────────────────────────
+// EXPORT
+// ────────────────────────────────────────────────────────────────
+function exportNarrative() {
+  const text = document.getElementById('narrativeText')?.innerText || '';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Schedule_Narrative_Report.txt';
+  a.click();
+  App.showAlert('Narrative exported.', 'success');
+}
+
+// ────────────────────────────────────────────────────────────────
+// BOOT: wait for App.init() (async IndexedDB) then render all tabs
+// ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  // App.init() is already kicked off by app.js DOMContentLoaded.
+  // We wait for it to finish loading versions from IndexedDB.
+  await App.whenReady();
+  console.log('[project.html] App ready — rendering tabs');
+
   renderCriticalPath();
+  renderMilestoneSummary();
   renderVersionHistory();
   renderTrendChart();
   renderScoringTable();

@@ -280,11 +280,11 @@ function exportCSV() {
   a.click();
 }
 
-function renderCharts() {
+function renderCharts(diagData) {
   const catCanvas = document.getElementById('categoryChart');
   if (catCanvas && window.Chart) {
-    const cats = [...new Set(DEMO_DIAGNOSTICS.map(d => d.category))];
-    const counts = cats.map(c => DEMO_DIAGNOSTICS.filter(d => d.category === c).reduce((s, d) => s + d.count, 0));
+    const cats = [...new Set(diagData.map(d => d.category))];
+    const counts = cats.map(c => diagData.filter(d => d.category === c).reduce((s, d) => s + d.count, 0));
     new Chart(catCanvas, {
       type: 'bar',
       data: {
@@ -298,7 +298,7 @@ function renderCharts() {
   const sevCanvas = document.getElementById('severityChart');
   if (sevCanvas && window.Chart) {
     const sevs = { critical: 0, high: 0, medium: 0, low: 0 };
-    DEMO_DIAGNOSTICS.forEach(d => { if (sevs[d.severity] !== undefined) sevs[d.severity]++; });
+    diagData.forEach(d => { if (sevs[d.severity] !== undefined) sevs[d.severity]++; });
     new Chart(sevCanvas, {
       type: 'doughnut',
       data: {
@@ -310,10 +310,45 @@ function renderCharts() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Wait for App.init() to finish loading IndexedDB data
+  await App.whenReady();
+
   const container = document.getElementById('diagnosticsContainer');
-  container.innerHTML = DEMO_DIAGNOSTICS.map(buildDiagCard).join('');
-  renderCharts();
+  const project = App._resolveCurrentProject();
+  const version = project ? App._resolveCurrentVersion(project) : null;
+  const hasReal = version && version.isReal && version.analysisResults;
+
+  let diagData;
+  if (hasReal && version.analysisResults.rules) {
+    // Use real scoring rules as diagnostic data
+    diagData = version.analysisResults.rules.filter(r => r.count > 0).sort((a, b) => b.penalty - a.penalty);
+    // Map real rules to the format buildDiagCard expects
+    diagData = diagData.map(r => ({
+      severity: r.severity,
+      category: ({
+        logicQuality: 'Logic Quality', dateIntegrity: 'Date Integrity',
+        constraintsFloat: 'Constraints & Float', activityHygiene: 'Activity Hygiene',
+        progressRealism: 'Progress Realism', criticalPathReliability: 'Critical Path Reliability'
+      })[r.category] || r.category,
+      title: r.title,
+      count: r.count,
+      percent: r.percent,
+      penalty: r.penalty,
+      description: r.description,
+      threshold: r.threshold || 'N/A',
+      recommendation: r.recommendation || `Address the ${r.count} activities flagged by this rule to improve your score.`,
+      totalActivities: r.totalActivities || version.activityCount || 0,
+      activities: (r.affectedIds || []).map(id => ({
+        id: id, name: '—', wbs: '—', startDate: '', finishDate: '', float: 0, isCritical: false
+      }))
+    }));
+  } else {
+    diagData = DEMO_DIAGNOSTICS;
+  }
+
+  container.innerHTML = diagData.map(buildDiagCard).join('');
+  renderCharts(diagData);
 });
 </script>
 <script>
