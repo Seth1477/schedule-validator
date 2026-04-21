@@ -22,8 +22,8 @@ class XERParser {
         const line = lines[i];
         if (!line.trim()) continue;
 
-        if (line.startsWith('%T ')) {
-          currentTable = line.substring(3).trim();
+        if (line.startsWith('%T')) {
+          currentTable = line.substring(2).trim();
           this.tables[currentTable] = [];
           fields = [];
         } else if (line.startsWith('%F') && currentTable) {

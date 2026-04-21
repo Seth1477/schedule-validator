@@ -279,6 +279,18 @@ function setStep(stepId, state) {
   if (state === 'active') el.innerHTML = '<span class="spinner-sm"></span>';
 }
 
+function resetOnError() {
+  // Hide progress section so user can try again without blank area
+  document.getElementById('uploadProgress').style.display = 'none';
+  document.getElementById('uploadBtn').disabled = false;
+  // Reset all step icons back to pending
+  [['step-validate','1'],['step-parse','2'],['step-analyze','3'],['step-complete','4']].forEach(([id, num]) => {
+    const el = document.getElementById(id)?.querySelector('.step-icon');
+    if (el) { el.className = 'step-icon step-pending'; el.textContent = num; }
+  });
+  document.getElementById('uploadStatus').textContent = 'Preparing...';
+}
+
 async function startUpload() {
   const projectId = document.getElementById('uploadProjectSelect').value;
   if (!projectId) { App.showAlert('Please select a project.', 'error'); return; }
@@ -311,9 +323,10 @@ async function startUpload() {
 
       await sleep(1000);
 
-      if (!parsed || parsed.parseErrors?.length > 0) {
-        App.showAlert('XER parsing failed: ' + (parsed?.parseErrors?.[0] || 'Unknown error'), 'error');
-        document.getElementById('uploadBtn').disabled = false;
+      if (!parsed || parser.errors.length > 0) {
+        const errMsg = parser.errors[0] || 'Could not parse XER file. Ensure it is a valid Primavera P6 XER export.';
+        App.showAlert('XER parsing failed: ' + errMsg, 'error');
+        resetOnError();
         return;
       }
 
@@ -364,7 +377,7 @@ async function startUpload() {
 
     } catch(err) {
       App.showAlert('Error processing schedule: ' + err.message, 'error');
-      document.getElementById('uploadBtn').disabled = false;
+      resetOnError();
     }
   };
   reader.readAsText(selectedFile);
