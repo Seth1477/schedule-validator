@@ -547,6 +547,10 @@ const App = {
     const container = document.querySelector('#diagnosticsContainer');
     if (!container) return;
 
+    // Resolve real version data
+    const version = project ? this._resolveCurrentVersion(project) : null;
+    const hasRealData = version && version.isReal && version.analysisResults;
+
     // Populate project-specific header elements
     if (project) {
       this._injectProjectIdIntoLinks(project);
@@ -554,16 +558,28 @@ const App = {
       const breadcrumb = document.getElementById('diagBreadcrumbLink');
       if (breadcrumb) { breadcrumb.textContent = project.name; breadcrumb.href = projectUrl; }
 
-      // Build subtitle from the latest version for this project
-      const versions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
-      const latest = versions.find(v => v.status === 'current') || versions[versions.length - 1];
-      const versionLabel = latest ? latest.version : 'Latest Update';
-      const dataDate = latest ? this.formatDate(latest.dataDate) : 'N/A';
-      const totalActivities = (window.DEMO_DIAGNOSTICS || []).reduce((max, d) => Math.max(max, d.totalActivities || 0), 0);
-      this.setEl('#diagSubtitle', `Schedule quality issues identified in ${versionLabel} (Data Date: ${dataDate})${totalActivities ? ` — ${totalActivities.toLocaleString()} activities analyzed` : ''}`);
+      if (hasRealData) {
+        const totalActivities = version.activityCount || 0;
+        this.setEl('#diagSubtitle', `Schedule quality issues identified in ${version.version} (Data Date: ${this.formatDate(version.dataDate)}) — ${totalActivities.toLocaleString()} activities analyzed`);
+      } else {
+        const versions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+        const latest = versions.find(v => v.status === 'current') || versions[versions.length - 1];
+        const versionLabel = latest ? latest.version : 'Latest Update';
+        const dataDate = latest ? this.formatDate(latest.dataDate) : 'N/A';
+        const totalActivities = (window.DEMO_DIAGNOSTICS || []).reduce((max, d) => Math.max(max, d.totalActivities || 0), 0);
+        this.setEl('#diagSubtitle', `Schedule quality issues identified in ${versionLabel} (Data Date: ${dataDate})${totalActivities ? ` — ${totalActivities.toLocaleString()} activities analyzed` : ''}`);
+      }
     }
 
-    container.innerHTML = DEMO_DIAGNOSTICS.map(d => this.buildDiagnosticCard(d)).join('');
+    // Build diagnostic cards from real rules or fallback to demo
+    if (hasRealData && version.analysisResults.rules) {
+      const rules = version.analysisResults.rules.filter(r => r.count > 0);
+      // Sort by penalty descending — most impactful first
+      rules.sort((a, b) => b.penalty - a.penalty);
+      container.innerHTML = rules.map(r => this.buildRuleDiagnosticCard(r)).join('');
+    } else {
+      container.innerHTML = DEMO_DIAGNOSTICS.map(d => this.buildDiagnosticCard(d)).join('');
+    }
 
     // Setup drill-down toggles
     container.querySelectorAll('.diag-toggle').forEach(btn => {
@@ -574,6 +590,36 @@ const App = {
         btn.textContent = isOpen ? 'Show Activities ▼' : 'Hide Activities ▲';
       });
     });
+  },
+
+  // Build a diagnostic card from a real scoring rule
+  buildRuleDiagnosticCard(rule) {
+    const sevClass = { critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' }[rule.severity] || 'badge-info';
+    const catLabel = {
+      logicQuality: 'Logic Quality', dateIntegrity: 'Date Integrity',
+      constraintsFloat: 'Constraints & Float', activityHygiene: 'Activity Hygiene',
+      progressRealism: 'Progress Realism', criticalPathReliability: 'Critical Path Reliability'
+    }[rule.category] || rule.category;
+
+    return `
+      <div class="diagnostic-card card mb-4">
+        <div class="diag-header flex-between">
+          <div class="flex gap-4 items-center">
+            <span class="badge ${sevClass}">${rule.severity.toUpperCase()}</span>
+            <span class="badge badge-info">${catLabel}</span>
+            <h3 class="diag-title">${rule.title}</h3>
+          </div>
+          <div class="diag-stats">
+            <span class="diag-count">${rule.count} of ${rule.totalActivities}</span>
+            <span class="diag-percent">(${rule.percent}%)</span>
+          </div>
+        </div>
+        <p class="diag-description mt-4">${rule.description}</p>
+        <div class="diag-recommendation mt-4">
+          <strong>Threshold:</strong> ${rule.threshold} &nbsp;|&nbsp; <strong>Score Penalty:</strong> -${rule.penalty.toFixed(1)} pts
+        </div>
+      </div>
+    `;
   },
 
   buildDiagnosticCard(d) {
