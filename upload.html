@@ -335,26 +335,68 @@ async function startUpload() {
       const cpAnalyzer = new CriticalPathAnalyzer();
       const cpResult = cpAnalyzer.analyze(parsed.activities, parsed.relationships);
 
+      // Count existing real (non-demo) versions for this project
+      const existingVersions = (App.scheduleVersions || []).filter(v => v.projectId === projectId && !v.isDemo);
       const versionLabel = document.getElementById('versionLabel').value ||
-        `Update ${DEMO_SCHEDULE_VERSIONS.filter(v => v.projectId === projectId).length + 1}`;
+        `Update ${existingVersions.length + 1}`;
+
+      // Build trimmed critical path for storage (no activityMap — too large)
+      const trimmedCP = {
+        longestPath: (cpResult.longestPath || []).slice(0, 40).map(a => ({
+          id: a.id, code: a.code, name: a.name || a.code || 'Activity',
+          duration: a.duration, earlyStart: a.earlyStart, earlyFinish: a.earlyFinish,
+          totalFloat: a.totalFloat, type: a.type, isCritical: a.isCritical || a.computedCritical
+        })),
+        criticalCount: (cpResult.criticalPath || []).length,
+        projectDuration: cpResult.projectDuration
+      };
+
+      // Build trimmed milestones list
+      const trimmedMilestones = (parsed.milestones || []).slice(0, 40).map(m => ({
+        id: m.id, code: m.code, name: m.name || m.code || 'Milestone',
+        type: m.type, status: m.status,
+        plannedStart: m.plannedStart, plannedFinish: m.plannedFinish,
+        earlyStart: m.earlyStart, earlyFinish: m.earlyFinish,
+        actualStart: m.actualStart, actualFinish: m.actualFinish,
+        totalFloat: m.totalFloat
+      }));
+
+      // Trim scoring rules — strip large affectedIds arrays
+      const trimmedScores = scores ? {
+        ...scores,
+        rules: (scores.rules || []).map(r => ({
+          ...r,
+          affectedIds: (r.affectedIds || []).slice(0, 10)
+        }))
+      } : null;
 
       const version = {
         id: 'v' + Date.now(),
         projectId,
         filename: selectedFile.name,
+        xerProjectName: parsed.project.fullName || parsed.project.name || '',
         dataDate: parsed.project.dataDate,
+        plannedStart: parsed.project.plannedStart,
+        plannedFinish: parsed.project.plannedFinish,
         uploadDate: new Date().toISOString().split('T')[0],
         version: versionLabel,
         overallScore: scores?.overallScore || 0,
         categoryScores: scores?.categoryScores || {},
         activityCount: parsed.activities.length,
         relationshipCount: parsed.relationships.length,
+        milestoneCount: (parsed.milestones || []).length,
         status: 'current',
-        analysisResults: scores,
-        criticalPath: cpResult
+        analysisResults: trimmedScores,
+        criticalPath: trimmedCP,
+        milestones: trimmedMilestones,
+        isReal: true
       };
 
       if (!App.scheduleVersions) App.scheduleVersions = [];
+      // Mark previous versions for this project as 'published'
+      App.scheduleVersions.forEach(v => {
+        if (v.projectId === projectId && v.status === 'current') v.status = 'published';
+      });
       App.scheduleVersions.push(version);
 
       // Update project score

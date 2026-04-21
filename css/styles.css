@@ -505,19 +505,24 @@ body {
 }
 
 .cp-table {
-  table-layout: fixed;
-  min-width: 824px;
+  min-width: 780px;
 }
 
-.cp-table td {
+.cp-table th:nth-child(1),
+.cp-table td:nth-child(1) {
+  width: 44px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
+.cp-table th:nth-child(2),
 .cp-table td:nth-child(2) {
-  white-space: normal;
-  word-break: break-word;
+  min-width: 220px;
+}
+
+.cp-table th:nth-child(n+3),
+.cp-table td:nth-child(n+3) {
+  white-space: nowrap;
+  width: 100px;
 }
 
 .data-table thead {

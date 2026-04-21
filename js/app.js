@@ -316,13 +316,41 @@ const App = {
     });
   },
 
+  // Resolve the specific version to display for a project
+  _resolveCurrentVersion(project) {
+    if (!project) return null;
+    const uploadId = this.getQueryParam('uploadId');
+    const projectVersions = (this.scheduleVersions || []).filter(v => v.projectId === project.id);
+
+    // 1. Specific uploadId from URL (after a fresh upload redirect)
+    if (uploadId) {
+      const v = projectVersions.find(v => v.id === uploadId);
+      if (v) return v;
+    }
+
+    // 2. Latest 'current' version for this project (real uploads first)
+    const realCurrent = projectVersions.filter(v => v.isReal).sort((a, b) => (b.id > a.id ? 1 : -1));
+    if (realCurrent.length > 0) return realCurrent[0];
+
+    // 3. Latest demo version (for demo projects with no real uploads)
+    const current = projectVersions.find(v => v.status === 'current');
+    if (current) return current;
+    if (projectVersions.length > 0) return projectVersions[projectVersions.length - 1];
+
+    return null;
+  },
+
   renderProjectDashboard() {
     const project = this._resolveCurrentProject();
     if (!project) return;
 
-    // Use demo data for the showcase
-    const scores = DEMO_CATEGORY_SCORES['v8'];
-    const overallScore = project.latestScore;
+    // Resolve the version to display — prefers real uploaded data
+    const version = this._resolveCurrentVersion(project);
+
+    // Use real analysis data if this version has it, otherwise fall back to demo data
+    const hasRealData = version && version.isReal && version.analysisResults;
+    const scores = hasRealData ? version.analysisResults.categoryScores : (DEMO_CATEGORY_SCORES['v8'] || {});
+    const overallScore = hasRealData ? version.overallScore : project.latestScore;
 
     // Wire all sidebar/header links to carry this project's ID
     this._injectProjectIdIntoLinks(project);
@@ -333,8 +361,13 @@ const App = {
     this.setEl('#projectClient', project.client);
     this.setEl('#projectContract', `${project.contractValue} ${project.contractType}`);
     this.setEl('#projectLocation', project.location);
-    this.setEl('#projectDataDate', this.formatDate('2026-01-01'));
-    this.setEl('#projectPlannedFinish', this.formatDate(project.plannedFinish));
+    this.setEl('#projectDataDate', this.formatDate(hasRealData ? version.dataDate : '2026-01-01'));
+    this.setEl('#projectPlannedFinish', this.formatDate(hasRealData ? (version.plannedFinish || project.plannedFinish) : project.plannedFinish));
+
+    // Show filename & XER project name if it's a real upload
+    if (hasRealData && version.xerProjectName) {
+      this.setEl('#projectClient', version.xerProjectName);
+    }
 
     // Overall score
     this.setEl('#overallScore', overallScore);
@@ -354,90 +387,142 @@ const App = {
       }
     });
 
+    // Quick Stats — use real data if available
+    if (hasRealData && version.analysisResults) {
+      const ar = version.analysisResults;
+      this.setEl('.metric-value.text-red:first-of-type', ar.negativeFloatCount || 0);
+      const negFloatCard = document.querySelectorAll('.metric-card')[0];
+      if (negFloatCard) negFloatCard.querySelector('.metric-value').textContent = ar.negativeFloatCount || 0;
+      const nearCritCard = document.querySelectorAll('.metric-card')[1];
+      if (nearCritCard) {
+        const nearCritCount = (ar.rules || []).find(r => r.ruleKey === 'NEAR_CRITICAL_DENSITY')?.count || 0;
+        nearCritCard.querySelector('.metric-value').textContent = nearCritCount;
+      }
+      const openEndCard = document.querySelectorAll('.metric-card')[2];
+      if (openEndCard) {
+        const openEndPred = (ar.rules || []).find(r => r.ruleKey === 'OPEN_ENDS_PREDECESSOR')?.count || 0;
+        const openEndSucc = (ar.rules || []).find(r => r.ruleKey === 'OPEN_ENDS_SUCCESSOR')?.count || 0;
+        openEndCard.querySelector('.metric-value').textContent = openEndPred + openEndSucc;
+      }
+    }
+
     // Executive narrative
-    this.renderNarrative(project, overallScore, scores);
+    this.renderNarrative(project, overallScore, scores, hasRealData ? version : null);
 
     // Milestones
-    this.renderMilestones();
+    this.renderMilestones(hasRealData ? version : null);
 
     // Score trend chart
-    this.renderScoreTrendChart();
+    this.renderScoreTrendChart(project, hasRealData ? version : null);
   },
 
-  renderNarrative(project, overallScore, scores) {
+  renderNarrative(project, overallScore, scores, version) {
     const el = document.getElementById('narrativeText');
     if (!el) return;
 
-    const ragLabel = overallScore >= 80 ? 'Green' : overallScore >= 65 ? 'Amber' : 'Red';
-    const ragClass = overallScore >= 80 ? 'text-green' : overallScore >= 65 ? 'text-amber' : 'text-red';
+    const ragLabel = overallScore >= 85 ? 'Green' : overallScore >= 70 ? 'Amber' : 'Red';
+    const ragClass = overallScore >= 85 ? 'text-green' : overallScore >= 70 ? 'text-amber' : 'text-red';
 
     // Find worst scoring category
     let worstCat = null, worstScore = 101;
     if (scores) {
       Object.values(scores).forEach(cat => {
-        if (cat.score < worstScore) { worstScore = cat.score; worstCat = cat; }
+        if (cat.score !== undefined && cat.score < worstScore) { worstScore = cat.score; worstCat = cat; }
       });
     }
 
     const logicScore = scores?.logicQuality?.score ?? null;
-    const constraintsScore = scores?.constraintsFloat?.score ?? null;
-    const logicRag = logicScore !== null ? (logicScore >= 80 ? 'Green' : logicScore >= 65 ? 'Amber' : 'Red') : null;
-    const logicClass = logicScore !== null ? (logicScore >= 80 ? 'text-green' : logicScore >= 65 ? 'text-amber' : 'text-red') : '';
+    const logicRag = logicScore !== null ? (logicScore >= 85 ? 'Green' : logicScore >= 70 ? 'Amber' : 'Red') : null;
+    const logicClass = logicScore !== null ? (logicScore >= 85 ? 'text-green' : logicScore >= 70 ? 'text-amber' : 'text-red') : '';
 
-    // Derive version info from schedule versions
-    const versions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
-    const latest = versions.find(v => v.status === 'current') || versions[versions.length - 1];
-    const versionLabel = latest ? latest.version : 'Latest Update';
-    const dataDate = latest ? this.formatDate(latest.dataDate) : 'N/A';
+    // Source data: real version or demo fallback
+    const isReal = version && version.isReal;
+    const rules = isReal ? (version.analysisResults?.rules || []) : [];
 
-    // Negative float diagnostics
-    const negFloatDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'NEGATIVE_FLOAT');
-    const negFloatCount = negFloatDiag ? negFloatDiag.count : null;
+    const versionLabel = isReal ? version.version : (() => {
+      const demoVersions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+      const latest = demoVersions.find(v => v.status === 'current') || demoVersions[demoVersions.length - 1];
+      return latest ? latest.version : 'Latest Update';
+    })();
+    const dataDate = isReal ? this.formatDate(version.dataDate) : (() => {
+      const demoVersions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
+      const latest = demoVersions.find(v => v.status === 'current') || demoVersions[demoVersions.length - 1];
+      return latest ? this.formatDate(latest.dataDate) : 'N/A';
+    })();
 
-    // Open-end predecessor diagnostic
-    const openEndDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'OPEN_ENDS_PREDECESSOR');
-    const openEndCount = openEndDiag ? openEndDiag.count : null;
-    const openEndSucc = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'OPEN_ENDS_SUCCESSOR');
-    const openEndSuccCount = openEndSucc ? openEndSucc.count : null;
+    // Pull rule counts from real analysis or demo
+    const getCount = (ruleKey) => {
+      if (isReal) {
+        const rule = rules.find(r => r.ruleKey === ruleKey);
+        return rule ? rule.count : null;
+      }
+      const demoDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === ruleKey);
+      return demoDiag ? demoDiag.count : null;
+    };
 
-    // Constraints diagnostic
-    const constraintsDiag = (window.DEMO_DIAGNOSTICS || []).find(d => d.ruleKey === 'EXCESSIVE_CONSTRAINTS');
-    const constraintsCount = constraintsDiag ? constraintsDiag.count : null;
+    const negFloatCount = getCount('NEGATIVE_FLOAT');
+    const openEndCount = getCount('OPEN_ENDS_PREDECESSOR');
+    const openEndSuccCount = getCount('OPEN_ENDS_SUCCESSOR');
+    const constraintsCount = getCount('EXCESSIVE_CONSTRAINTS');
 
-    // Forecast finish from milestones
-    const substCompMilestone = (window.DEMO_MILESTONES || []).find(m => m.name === 'Substantial Completion');
-    const forecastFinish = substCompMilestone ? this.formatDate(substCompMilestone.forecastDate) : this.formatDate(project.plannedFinish);
-    const slipDays = substCompMilestone ? substCompMilestone.variance : null;
+    let html = `<p>The <strong>${project.name}</strong> schedule (${versionLabel}, Data Date: ${dataDate}) received an overall Validation Score of <strong class="${ragClass}">${overallScore}/100 (${ragLabel})</strong>, indicating ${overallScore >= 85 ? 'strong schedule quality with minor areas for improvement' : overallScore >= 70 ? 'moderate schedule quality concerns requiring attention' : 'significant schedule quality issues requiring immediate remediation'}.</p>`;
 
-    let html = `<p>The <strong>${project.name}</strong> schedule (${versionLabel}, Data Date: ${dataDate}) received an overall Validation Score of <strong class="${ragClass}">${overallScore}/100 (${ragLabel})</strong>, indicating ${overallScore >= 80 ? 'strong schedule quality with minor areas for improvement' : overallScore >= 65 ? 'moderate schedule quality concerns requiring attention' : 'significant schedule quality issues requiring immediate remediation'}.</p>`;
+    html += `<p>The analysis evaluated <strong>${isReal ? version.activityCount : 'N/A'} activities</strong> and <strong>${isReal ? version.relationshipCount : 'N/A'} relationships</strong>.`;
+    if (isReal && version.milestoneCount) html += ` <strong>${version.milestoneCount} milestones</strong> were identified.`;
+    html += `</p>`;
 
-    if (negFloatCount !== null) {
-      html += `<p>The most critical finding is <strong>${negFloatCount} activities with negative total float</strong>. This indicates the project cannot achieve its planned substantial completion date of ${this.formatDate(project.plannedFinish)} without acceleration or scope changes. The current forecast finish is <strong class="text-red">${forecastFinish}</strong>${slipDays ? `, representing a <strong>${slipDays}-working-day slip</strong> from the contract milestone` : ''}.`;
-      html += `</p>`;
+    if (negFloatCount !== null && negFloatCount > 0) {
+      html += `<p>The most critical finding is <strong>${negFloatCount} activities with negative total float</strong>. This indicates the schedule may not achieve its planned dates without acceleration or scope changes.</p>`;
     }
 
-    if (logicScore !== null && openEndCount !== null) {
+    if (logicScore !== null) {
       html += `<p><strong>Logic quality</strong> scored <span class="${logicClass}">${logicScore}/100 (${logicRag})</span>`;
       if (openEndCount || openEndSuccCount) {
         html += `, driven by ${openEndCount ? `${openEndCount} activities missing predecessor logic` : ''}${openEndCount && openEndSuccCount ? ' and ' : ''}${openEndSuccCount ? `${openEndSuccCount} missing successors` : ''}. These open ends undermine the reliability of the critical path and float calculations.`;
       } else {
-        html += `.`;
+        html += `. Schedule logic is well-connected.`;
       }
       html += `</p>`;
     }
 
+    if (worstCat && worstScore < 85) {
+      html += `<p>The weakest area is <strong>${worstCat.label || 'a category'}</strong> at ${worstScore}/100, which should be the primary focus for improvement.</p>`;
+    }
+
     const actions = [];
-    if (constraintsCount !== null) actions.push(`Address negative float by reviewing all FNLT constraints — ${constraintsCount} hard constraints were identified, well above the DCMA threshold of 5%`);
-    if (openEndCount) actions.push(`Close ${openEndCount} predecessor logic gaps to strengthen critical path reliability`);
-    actions.push(`Confirm data date is set accurately before the next update submission`);
+    if (negFloatCount && negFloatCount > 0) actions.push(`Investigate and resolve ${negFloatCount} negative float activities`);
+    if (constraintsCount && constraintsCount > 0) actions.push(`Review ${constraintsCount} hard constraints — DCMA threshold is < 5%`);
+    if (openEndCount && openEndCount > 0) actions.push(`Close ${openEndCount} predecessor logic gaps`);
+    actions.push(`Confirm data date is set accurately before the next update`);
     html += `<p><strong>Recommended actions:</strong> ${actions.map((a, i) => `(${i + 1}) ${a}.`).join(' ')}</p>`;
 
     el.innerHTML = html;
   },
 
-  renderMilestones() {
+  renderMilestones(version) {
     const container = document.querySelector('#milestonesTable');
     if (!container) return;
+
+    // Use real milestones from uploaded version if available
+    if (version && version.isReal && version.milestones && version.milestones.length > 0) {
+      container.innerHTML = version.milestones.map(m => {
+        const isCritical = m.totalFloat !== undefined && m.totalFloat <= 0;
+        const hasActual = !!m.actualFinish;
+        const statusLabel = hasActual ? 'Complete' : (isCritical ? 'Critical' : 'Scheduled');
+        const statusBadge = hasActual ? 'badge-success' : (isCritical ? 'badge-critical' : 'badge-info');
+        const floatClass = m.totalFloat < 0 ? 'text-red' : m.totalFloat === 0 ? 'text-amber' : 'text-green';
+        return `<tr>
+          <td>${m.name}${isCritical ? ' <span class="badge badge-critical">Critical</span>' : ''}</td>
+          <td>${this.formatDate(m.plannedFinish || m.plannedStart)}</td>
+          <td>${hasActual ? this.formatDate(m.actualFinish) : this.formatDate(m.earlyFinish)}</td>
+          <td class="${floatClass}">${m.totalFloat !== undefined ? (m.totalFloat > 0 ? '+' : '') + Math.round(m.totalFloat) + 'd' : 'N/A'}</td>
+          <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
+        </tr>`;
+      }).join('');
+      return;
+    }
+
+    // Fallback to demo milestones
     container.innerHTML = DEMO_MILESTONES.map(m => {
       const varClass = m.variance > 30 ? 'text-red' : m.variance > 10 ? 'text-amber' : 'text-green';
       const statusLabel = { complete: 'Complete', slipping: 'Slipping', at_risk: 'At Risk', on_track: 'On Track' }[m.status] || m.status;
@@ -452,47 +537,9 @@ const App = {
     }).join('');
   },
 
-  renderScoreTrendChart() {
-    const canvas = document.querySelector('#scoreTrendChart');
-    if (!canvas || typeof Chart === 'undefined') return;
-
-    const labels = DEMO_SCORE_HISTORY.map(h => h.version);
-    const overallData = DEMO_SCORE_HISTORY.map(h => h.overallScore);
-
-    try {
-      new Chart(canvas, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Overall Score',
-              data: overallData,
-              borderColor: '#0ea5e9',
-              backgroundColor: 'rgba(14,165,233,0.1)',
-              borderWidth: 3,
-              pointRadius: 5,
-              pointBackgroundColor: overallData.map(s => s >= 85 ? '#22c55e' : s >= 70 ? '#f59e0b' : '#ef4444'),
-              fill: true,
-              tension: 0.4
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
-          scales: {
-            y: { min: 50, max: 100, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } },
-            x: { grid: { display: false }, ticks: { color: '#64748b' } }
-          }
-        }
-      });
-    } catch(e) {
-      console.warn('Chart rendering failed', e);
-    }
+  renderScoreTrendChart(project, version) {
+    // This method is now called from renderProjectDashboard which uses project.html's own chart.
+    // Left as no-op — chart is rendered by project.html's renderTrendChart().
   },
 
   renderDiagnostics() {
