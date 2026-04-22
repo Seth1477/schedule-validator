@@ -283,7 +283,8 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>Activity / Milestone</th>
+                <th>Activity ID</th>
+                <th>Activity Name</th>
                 <th>Duration</th>
                 <th>Early Start</th>
                 <th>Early Finish</th>
@@ -405,9 +406,11 @@ function renderCriticalPath() {
       const isMilestone = act.type === 'TT_Mile' || act.type === 'TT_FinMile' || act.type === 'TT_StartMile' || act.duration === 0;
       const floatVal = act.totalFloat !== undefined ? Math.round(act.totalFloat) : 0;
       const floatClass = floatVal < 0 ? 'text-red font-bold' : floatVal === 0 ? 'text-amber' : 'text-green';
+      const actId = act.code || act.id || '';
       return `<tr class="${isMilestone ? 'milestone-row' : ''}">
         <td>${i + 1}</td>
-        <td>${isMilestone ? '<span style="color:#3b82f6">&#9670;</span> ' : ''}<strong>${act.name}</strong></td>
+        <td><code style="font-size:12px;background:#f1f5f9;padding:2px 6px;border-radius:4px;">${actId}</code></td>
+        <td>${isMilestone ? '<span style="color:#3b82f6">&#9670;</span> ' : ''}${act.name}</td>
         <td>${act.duration > 0 ? Math.round(act.duration) + 'd' : '—'}</td>
         <td>${App.formatDate(act.earlyStart)}</td>
         <td>${App.formatDate(act.earlyFinish)}</td>
@@ -420,7 +423,8 @@ function renderCriticalPath() {
     tbody.innerHTML = DEMO_CRITICAL_PATH.map((act, i) => `
       <tr class="${act.isMilestone ? 'milestone-row' : ''}">
         <td>${i + 1}</td>
-        <td>${act.isMilestone ? '<span style="color:#3b82f6">&#9670;</span> ' : ''}<strong>${act.name}</strong></td>
+        <td><code style="font-size:12px;background:#f1f5f9;padding:2px 6px;border-radius:4px;">${act.id || 'A' + (1000 + i)}</code></td>
+        <td>${act.isMilestone ? '<span style="color:#3b82f6">&#9670;</span> ' : ''}${act.name}</td>
         <td>${act.duration > 0 ? act.duration + 'd' : '—'}</td>
         <td>${App.formatDate(act.earlyStart)}</td>
         <td>${App.formatDate(act.earlyFinish)}</td>

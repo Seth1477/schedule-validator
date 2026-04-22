@@ -73,15 +73,27 @@
 
       <!-- Upload Card -->
       <div class="card upload-card">
-        <h2 class="card-title mb-2">Select Project &amp; Upload File</h2>
-        <p class="text-secondary mb-6">Each uploaded schedule becomes a version. Only one schedule per XER file is supported.</p>
+        <h2 class="card-title mb-2">Upload Schedule File</h2>
+        <p class="text-secondary mb-6">Upload a Primavera P6 XER file. Create a new project or add to an existing one.</p>
 
-        <!-- Project Select -->
+        <!-- Project Target -->
         <div class="form-group">
-          <label class="form-label">Project *</label>
-          <select class="form-select" id="uploadProjectSelect">
-            <option value="">Select a project...</option>
-          </select>
+          <label class="form-label">Destination Project *</label>
+          <div style="display:flex;gap:12px;margin-bottom:12px;">
+            <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #a78bfa;border-radius:10px;cursor:pointer;background:#f5f3ff;font-weight:600;font-size:14px;flex:1;">
+              <input type="radio" name="projectMode" value="new" checked onchange="toggleProjectMode()" style="accent-color:#7c6fe0;" />
+              Create New Project
+            </label>
+            <label id="existingLabel" style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;background:#fff;font-weight:500;font-size:14px;flex:1;color:#94a3b8;">
+              <input type="radio" name="projectMode" value="existing" onchange="toggleProjectMode()" style="accent-color:#7c6fe0;" />
+              Add to Existing Project
+            </label>
+          </div>
+          <div id="existingProjectRow" style="display:none;">
+            <select class="form-select" id="uploadProjectSelect">
+              <option value="">Select an existing project...</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-group">
@@ -209,40 +221,67 @@
 <script>
 let selectedFile = null;
 
-// Populate project select — includes "Auto-create" option
-document.addEventListener('DOMContentLoaded', () => {
+function toggleProjectMode() {
+  const mode = document.querySelector('input[name="projectMode"]:checked').value;
+  const existingRow = document.getElementById('existingProjectRow');
+  const newLabel = document.querySelector('label:has(input[value="new"])');
+  const existingLabel = document.getElementById('existingLabel');
+
+  if (mode === 'existing') {
+    existingRow.style.display = 'block';
+    existingLabel.style.borderColor = '#a78bfa';
+    existingLabel.style.background = '#f5f3ff';
+    existingLabel.style.fontWeight = '600';
+    existingLabel.style.color = '#1e1b4b';
+    newLabel.style.borderColor = '#e2e8f0';
+    newLabel.style.background = '#fff';
+    newLabel.style.fontWeight = '500';
+    newLabel.style.color = '#94a3b8';
+  } else {
+    existingRow.style.display = 'none';
+    newLabel.style.borderColor = '#a78bfa';
+    newLabel.style.background = '#f5f3ff';
+    newLabel.style.fontWeight = '600';
+    newLabel.style.color = '#1e1b4b';
+    existingLabel.style.borderColor = '#e2e8f0';
+    existingLabel.style.background = '#fff';
+    existingLabel.style.fontWeight = '500';
+    existingLabel.style.color = '#94a3b8';
+  }
+}
+
+// Populate project select with existing projects
+document.addEventListener('DOMContentLoaded', async () => {
+  await App.whenReady();
   const sel = document.getElementById('uploadProjectSelect');
-  // Wait for async App.init() to finish before populating
-  const waitForApp = () => {
-    if (!App._ready) { setTimeout(waitForApp, 100); return; }
-    const projects = App.projects || [];
+  const projects = App.projects || [];
 
-    // Always add auto-create as the default first option
-    const autoOpt = document.createElement('option');
-    autoOpt.value = '__auto__';
-    autoOpt.textContent = 'Auto-create new project from XER file (recommended)';
-    autoOpt.selected = true;
-    sel.appendChild(autoOpt);
+  if (projects.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No existing projects — create one by uploading a file';
+    opt.disabled = true;
+    sel.appendChild(opt);
+    // Disable the "existing" radio if no projects
+    document.getElementById('existingLabel').style.opacity = '0.5';
+    document.getElementById('existingLabel').style.pointerEvents = 'none';
+  } else {
+    projects.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      const versionCount = (App.scheduleVersions || []).filter(v => v.projectId === p.id).length;
+      opt.textContent = `${p.name} (${versionCount} upload${versionCount !== 1 ? 's' : ''})`;
+      sel.appendChild(opt);
+    });
+  }
 
-    // Add existing projects as options too
-    if (projects.length > 0) {
-      const sep = document.createElement('option');
-      sep.disabled = true;
-      sep.textContent = '── Or add to existing project ──';
-      sel.appendChild(sep);
-      projects.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name;
-        sel.appendChild(opt);
-      });
-    }
-
-    // Pre-select from query param if specified
-    const pid = new URLSearchParams(window.location.search).get('projectId');
-    if (pid) sel.value = pid;
-  };
-  waitForApp();
+  // If projectId in URL, auto-select existing mode
+  const pid = new URLSearchParams(window.location.search).get('projectId');
+  if (pid && projects.find(p => p.id === pid)) {
+    document.querySelector('input[name="projectMode"][value="existing"]').checked = true;
+    toggleProjectMode();
+    sel.value = pid;
+  }
 });
 
 // File selection
@@ -302,7 +341,15 @@ function resetOnError() {
 async function startUpload() {
   if (!selectedFile) { App.showAlert('Please select a .xer file.', 'error'); return; }
 
-  const projectSelectVal = document.getElementById('uploadProjectSelect').value;
+  const projectMode = document.querySelector('input[name="projectMode"]:checked').value;
+  const projectSelectVal = projectMode === 'existing'
+    ? document.getElementById('uploadProjectSelect').value
+    : '__auto__';
+
+  if (projectMode === 'existing' && !projectSelectVal) {
+    App.showAlert('Please select an existing project.', 'error');
+    return;
+  }
 
   document.getElementById('uploadProgress').style.display = 'block';
   document.getElementById('uploadBtn').disabled = true;
