@@ -33,6 +33,16 @@ const App = {
   // Admin email — this account gets pre-seeded with demo projects
   ADMIN_EMAIL: 'speterson1477@gmail.com',
 
+  // ─── Current Project Persistence ─────────────────────────────
+  // Saves the last-viewed project ID to sessionStorage so it survives
+  // navigation between pages even when ?projectId= is absent from the URL.
+  _saveCurrentProjectId(id) {
+    try { sessionStorage.setItem('cc_cur_proj_' + this._currentEmail(), id); } catch(e) {}
+  },
+  _loadCurrentProjectId() {
+    try { return sessionStorage.getItem('cc_cur_proj_' + this._currentEmail()) || null; } catch(e) { return null; }
+  },
+
   // ─── Storage: Load ───────────────────────────────────────────
   _loadProjectsSync() {
     try {
@@ -371,8 +381,9 @@ const App = {
     if (page === 'project') this.renderProjectDashboard();
     if (page === 'diagnostics') this.renderDiagnostics();
     if (page === 'comparison') this.renderComparison();
-    // Initialize sticky scrollbars for all visible tables on this page
-    requestAnimationFrame(() => this.initStickyScrollbars());
+    // Inject ?projectId= into all sidebar nav links on every page
+    const project = this._resolveCurrentProject();
+    if (project) this._injectProjectIdIntoLinks(project);
   },
 
   renderProjectsList() {
@@ -457,15 +468,23 @@ const App = {
 
   // ─── Project Resolution ──────────────────────────────────────
   _resolveCurrentProject() {
-    const projectId = this.getQueryParam('projectId') || this.projects[0]?.id;
-    return this.projects.find(p => p.id === projectId) || this.projects[0] || null;
+    const projectId = this.getQueryParam('projectId')
+      || this._loadCurrentProjectId()
+      || this.projects[0]?.id;
+    const project = this.projects.find(p => p.id === projectId)
+      || this.projects.find(p => p.id !== 'proj-001' && p.id !== 'proj-002' && p.id !== 'proj-003')
+      || this.projects[0]
+      || null;
+    // Persist so other pages pick it up without a URL param
+    if (project) this._saveCurrentProjectId(project.id);
+    return project;
   },
 
   _injectProjectIdIntoLinks(project) {
     if (!project) return;
     document.querySelectorAll('a[href]').forEach(a => {
       const href = a.getAttribute('href') || '';
-      const isInternalPage = /^(project|diagnostics|comparison|upload)\.html/.test(href.split('/').pop());
+      const isInternalPage = /^(project|diagnostics|comparison|upload|learn)\.html/.test(href.split('/').pop());
       if (isInternalPage && !href.includes('projectId=')) {
         const sep = href.includes('?') ? '&' : '?';
         a.setAttribute('href', `${href}${sep}projectId=${project.id}`);

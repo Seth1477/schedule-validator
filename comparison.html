@@ -287,74 +287,270 @@
 <script src="js/datastore.js"></script>
 <script src="js/app.js"></script>
 <script>
+// ── State ─────────────────────────────────────────────────────
+let _compProject = null;
+let _compVersions = [];   // real versions for current project
+let _v1 = null, _v2 = null; // selected baseline / current
+
 document.addEventListener('DOMContentLoaded', async () => {
   await App.whenReady();
-  // Populate version selects
-  const baselineSelect = document.getElementById('baselineSelect');
-  const currentSelect = document.getElementById('currentSelect');
-  DEMO_SCHEDULE_VERSIONS.forEach((v, i) => {
-    const opt1 = new Option(`${v.version} (${v.dataDate})`, v.id);
-    const opt2 = new Option(`${v.version} (${v.dataDate})`, v.id);
-    baselineSelect.appendChild(opt1);
-    currentSelect.appendChild(opt2);
-  });
-  baselineSelect.value = 'v7'; // Update 6
-  currentSelect.value = 'v8'; // Update 7
 
-  // Render tables
+  _compProject = App._resolveCurrentProject();
+  if (_compProject) {
+    // Update breadcrumb
+    const bc = document.getElementById('compBreadcrumbLink');
+    if (bc) { bc.textContent = _compProject.name; bc.href = `project.html?projectId=${_compProject.id}`; }
+    App._injectProjectIdIntoLinks(_compProject);
+  }
+
+  // Gather real uploaded versions for this project
+  _compVersions = (App.scheduleVersions || [])
+    .filter(v => _compProject && v.projectId === _compProject.id && v.isReal)
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const baselineSelect = document.getElementById('baselineSelect');
+  const currentSelect  = document.getElementById('currentSelect');
+
+  if (_compVersions.length < 2) {
+    // Not enough uploads — show placeholder and lock controls
+    const needed = 2 - _compVersions.length;
+    baselineSelect.innerHTML = `<option>Need ${needed} more upload${needed !== 1 ? 's' : ''} to compare</option>`;
+    currentSelect.innerHTML  = `<option>Need ${needed} more upload${needed !== 1 ? 's' : ''} to compare</option>`;
+    // Show informational message in summary area
+    document.getElementById('summaryCards').innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:40px 24px;color:#64748b;">
+        <div style="font-size:48px;margin-bottom:16px;">📊</div>
+        <h3 style="font-size:18px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Upload at least 2 schedules to compare</h3>
+        <p style="font-size:14px;max-width:400px;margin:0 auto 20px;">
+          ${_compProject ? `"${_compProject.name}" currently has ${_compVersions.length} upload${_compVersions.length !== 1 ? 's' : ''}.` : ''}
+          Upload another XER update to unlock the comparison view.
+        </p>
+        <a href="upload.html${_compProject ? '?projectId=' + _compProject.id : ''}" class="btn btn-primary">↑ Upload Schedule</a>
+      </div>`;
+    return;
+  }
+
+  // Populate dropdowns
+  _compVersions.forEach((v, i) => {
+    const label = `${v.version} — ${App.formatDate(v.dataDate)} (Score: ${v.overallScore})`;
+    baselineSelect.appendChild(new Option(label, v.id));
+    currentSelect.appendChild(new Option(label, v.id));
+  });
+  // Default: oldest as baseline, newest as current
+  baselineSelect.value = _compVersions[0].id;
+  currentSelect.value  = _compVersions[_compVersions.length - 1].id;
+
+  runComparison();
+});
+
+// ── Helpers ───────────────────────────────────────────────────
+function getRule(version, ruleKey) {
+  return (version?.analysisResults?.rules || []).find(r => r.ruleKey === ruleKey) || null;
+}
+function ruleCount(version, ruleKey) {
+  return getRule(version, ruleKey)?.count || 0;
+}
+function catScore(version, catKey) {
+  return version?.categoryScores?.[catKey]?.score ?? null;
+}
+
+// ── Run Comparison ───────────────────────────────────────────
+function runComparison() {
+  const baselineSelect = document.getElementById('baselineSelect');
+  const currentSelect  = document.getElementById('currentSelect');
+  _v1 = _compVersions.find(v => v.id === baselineSelect.value) || _compVersions[0];
+  _v2 = _compVersions.find(v => v.id === currentSelect.value)  || _compVersions[_compVersions.length - 1];
+
+  if (!_v1 || !_v2 || _v1.id === _v2.id) {
+    App.showAlert('Please select two different schedule versions to compare.', 'warning');
+    return;
+  }
+
+  renderSummaryCards();
+  renderActivityStats();
   renderMilestoneChanges();
   renderActivityChanges();
   renderFloatChart();
   renderScoreDeltaChart();
-});
+  renderNarrative();
+  App.showAlert(`Comparing ${_v1.version} vs ${_v2.version}`, 'success');
+}
 
+// ── Summary Delta Cards ───────────────────────────────────────
+function renderSummaryCards() {
+  const scoreChange   = (_v2.overallScore || 0) - (_v1.overallScore || 0);
+  const negFloat1     = ruleCount(_v1, 'NEGATIVE_FLOAT');
+  const negFloat2     = ruleCount(_v2, 'NEGATIVE_FLOAT');
+  const negFloatDelta = negFloat2 - negFloat1;
+
+  // Finish date movement (calendar days)
+  let finishDeltaDays = null;
+  let finishCtx = 'No planned finish recorded';
+  if (_v1.plannedFinish && _v2.plannedFinish) {
+    finishDeltaDays = Math.round((new Date(_v2.plannedFinish) - new Date(_v1.plannedFinish)) / 86400000);
+    finishCtx = `${App.formatDate(_v1.plannedFinish)} → ${App.formatDate(_v2.plannedFinish)}`;
+  }
+
+  // CP duration change
+  const cp1 = _v1.criticalPath?.projectDuration || null;
+  const cp2 = _v2.criticalPath?.projectDuration || null;
+  const cpSlip = (cp1 !== null && cp2 !== null) ? Math.round(cp2 - cp1) : null;
+
+  const cards = document.getElementById('summaryCards');
+  if (!cards) return;
+  cards.innerHTML = `
+    <div class="delta-card card ${finishDeltaDays > 0 ? 'delta-negative' : finishDeltaDays < 0 ? 'delta-positive' : 'delta-neutral'}">
+      <div class="delta-icon">📅</div>
+      <div class="delta-value ${finishDeltaDays > 0 ? 'text-red' : finishDeltaDays < 0 ? 'text-green' : 'text-secondary'}">
+        ${finishDeltaDays !== null ? (finishDeltaDays > 0 ? '+' : '') + finishDeltaDays + 'd' : 'N/A'}
+      </div>
+      <div class="delta-label">Finish Date Movement</div>
+      <div class="delta-context">${finishCtx}</div>
+    </div>
+    <div class="delta-card card ${cpSlip > 0 ? 'delta-negative' : cpSlip < 0 ? 'delta-positive' : 'delta-neutral'}">
+      <div class="delta-icon">🔴</div>
+      <div class="delta-value ${cpSlip > 0 ? 'text-red' : cpSlip < 0 ? 'text-green' : 'text-secondary'}">
+        ${cpSlip !== null ? (cpSlip > 0 ? '+' : '') + cpSlip + 'd' : 'N/A'}
+      </div>
+      <div class="delta-label">Critical Path Change</div>
+      <div class="delta-context">Longest path duration</div>
+    </div>
+    <div class="delta-card card ${scoreChange < -2 ? 'delta-negative' : scoreChange > 2 ? 'delta-positive' : 'delta-neutral'}">
+      <div class="delta-icon">📊</div>
+      <div class="delta-value ${scoreChange < 0 ? 'text-red' : scoreChange > 0 ? 'text-green' : 'text-secondary'}">
+        ${scoreChange > 0 ? '+' : ''}${scoreChange} pt${Math.abs(scoreChange) !== 1 ? 's' : ''}
+      </div>
+      <div class="delta-label">Score Change</div>
+      <div class="delta-context">${_v1.overallScore} → ${_v2.overallScore}</div>
+    </div>
+    <div class="delta-card card ${negFloatDelta > 0 ? 'delta-negative' : negFloatDelta < 0 ? 'delta-positive' : 'delta-neutral'}">
+      <div class="delta-icon">⚠️</div>
+      <div class="delta-value ${negFloatDelta > 0 ? 'text-red' : negFloatDelta < 0 ? 'text-green' : 'text-secondary'}">
+        ${negFloatDelta > 0 ? '+' : ''}${negFloatDelta}
+      </div>
+      <div class="delta-label">Negative Float Delta</div>
+      <div class="delta-context">${negFloat1} → ${negFloat2} activities</div>
+    </div>`;
+}
+
+// ── Activity Stats Row ────────────────────────────────────────
+function renderActivityStats() {
+  const actDelta  = (_v2.activityCount || 0) - (_v1.activityCount || 0);
+  const relDelta  = (_v2.relationshipCount || 0) - (_v1.relationshipCount || 0);
+  const milDelta  = (_v2.milestoneCount || 0) - (_v1.milestoneCount || 0);
+  const negDelta  = ruleCount(_v2, 'NEGATIVE_FLOAT') - ruleCount(_v1, 'NEGATIVE_FLOAT');
+  const fmt = n => (n > 0 ? '+' : '') + n;
+  const cls = n => n > 0 ? 'text-red' : n < 0 ? 'text-green' : 'text-secondary';
+
+  // Find the grid-4 after summaryCards
+  const rows = document.querySelectorAll('.grid-4.gap-4.mb-6');
+  const statsRow = rows[1]; // second grid-4 is the stats row
+  if (!statsRow) return;
+  statsRow.innerHTML = `
+    <div class="stat-mini card">
+      <div class="stat-mini-value ${cls(actDelta)}">${fmt(actDelta)}</div>
+      <div class="stat-mini-label">Activities (${_v1.activityCount || 0} → ${_v2.activityCount || 0})</div>
+    </div>
+    <div class="stat-mini card">
+      <div class="stat-mini-value ${cls(relDelta)}">${fmt(relDelta)}</div>
+      <div class="stat-mini-label">Relationships (${_v1.relationshipCount || 0} → ${_v2.relationshipCount || 0})</div>
+    </div>
+    <div class="stat-mini card">
+      <div class="stat-mini-value ${cls(milDelta)}">${fmt(milDelta)}</div>
+      <div class="stat-mini-label">Milestones (${_v1.milestoneCount || 0} → ${_v2.milestoneCount || 0})</div>
+    </div>
+    <div class="stat-mini card">
+      <div class="stat-mini-value ${cls(negDelta)}">${fmt(negDelta)}</div>
+      <div class="stat-mini-label">Neg. Float (${ruleCount(_v1, 'NEGATIVE_FLOAT')} → ${ruleCount(_v2, 'NEGATIVE_FLOAT')})</div>
+    </div>`;
+}
+
+// ── Milestone Changes ─────────────────────────────────────────
 function renderMilestoneChanges() {
   const tbody = document.getElementById('milestoneChanges');
   if (!tbody) return;
-  tbody.innerHTML = DEMO_COMPARISON.milestoneChanges.map(m => `
-    <tr>
-      <td><strong>${m.name}</strong></td>
-      <td>${App.formatDate(m.priorForecast)}</td>
-      <td>${App.formatDate(m.currentForecast)}</td>
-      <td class="text-red font-bold">+${m.variance}d</td>
-      <td><span class="badge badge-critical">Slipped</span></td>
-    </tr>
-  `).join('');
+
+  const m1 = _v1?.milestones || [];
+  const m2 = _v2?.milestones || [];
+  const badge = document.querySelector('#comp-milestones .badge.badge-critical');
+
+  if (m1.length === 0 && m2.length === 0) {
+    if (badge) badge.textContent = 'No milestones stored';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px;">Milestone details are stored on the first 40 milestones per upload. Upload new schedules to populate this tab.</td></tr>`;
+    return;
+  }
+
+  // Match milestones by name between versions
+  const rows = [];
+  m2.forEach(cur => {
+    const prev = m1.find(p => p.name === cur.name || p.code === cur.code);
+    const prevDate = prev ? (prev.earlyFinish || prev.plannedFinish) : null;
+    const curDate  = cur.earlyFinish || cur.plannedFinish;
+    let variance = null;
+    if (prevDate && curDate) {
+      variance = Math.round((new Date(curDate) - new Date(prevDate)) / 86400000);
+    }
+    const hasActual = !!cur.actualFinish;
+    rows.push({ name: cur.name, prevDate, curDate, variance, hasActual, isCritical: cur.totalFloat <= 0 });
+  });
+
+  const slipped = rows.filter(r => r.variance > 0 && !r.hasActual).length;
+  if (badge) badge.textContent = slipped > 0 ? `${slipped} milestone${slipped !== 1 ? 's' : ''} slipped` : 'No slippage detected';
+
+  tbody.innerHTML = rows.map(r => {
+    const dirClass = r.variance > 0 ? 'text-red font-bold' : r.variance < 0 ? 'text-green' : 'text-secondary';
+    const dirLabel = r.hasActual ? '<span class="badge badge-success">Complete</span>'
+      : r.variance > 0 ? '<span class="badge badge-critical">Slipped</span>'
+      : r.variance < 0 ? '<span class="badge badge-low">Recovered</span>'
+      : '<span class="badge badge-medium">No Change</span>';
+    return `<tr>
+      <td><strong>${r.name}</strong></td>
+      <td>${App.formatDate(r.prevDate) || '—'}</td>
+      <td>${App.formatDate(r.curDate) || '—'}</td>
+      <td class="${dirClass}">${r.variance !== null ? (r.variance > 0 ? '+' : '') + r.variance + 'd' : 'N/A'}</td>
+      <td>${dirLabel}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px;">No matching milestones found between versions.</td></tr>`;
 }
 
+// ── Activity Changes ──────────────────────────────────────────
 function renderActivityChanges() {
   const tbody = document.getElementById('activityChanges');
   if (!tbody) return;
-  tbody.innerHTML = DEMO_COMPARISON.activityChanges.map(a => `
-    <tr class="act-change-row">
-      <td><code>${a.id}</code></td>
-      <td>${a.name}</td>
-      <td class="text-sm">${App.formatDate(a.priorStart)} → <strong>${App.formatDate(a.newStart)}</strong></td>
-      <td class="text-sm">${App.formatDate(a.priorFinish)} → <strong>${App.formatDate(a.newFinish)}</strong></td>
-      <td class="${a.finishVariance > 0 ? 'text-red font-bold' : 'text-green font-bold'}">${a.finishVariance > 0 ? '+' : ''}${a.finishVariance}d</td>
-      <td class="${a.floatChange < 0 ? 'text-red' : 'text-green'}">${a.floatChange > 0 ? '+' : ''}${a.floatChange}d</td>
-    </tr>
-  `).join('');
+  // We don't store full activity lists — only IDs from rules. Show a note.
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:32px;">
+    <strong>Activity-level diff requires full XER data.</strong><br/>
+    Key changes are summarized in the Summary Cards and Score Delta tabs above.
+  </td></tr>`;
 }
 
-function filterActivityChanges() {
-  const search = document.getElementById('actSearch').value.toLowerCase();
-  document.querySelectorAll('.act-change-row').forEach(row => {
-    const text = row.textContent.toLowerCase();
-    row.style.display = text.includes(search) ? '' : 'none';
-  });
-}
+function filterActivityChanges() { /* no-op until full diff is stored */ }
 
+// ── Float Distribution Chart ──────────────────────────────────
 function renderFloatChart() {
   const canvas = document.getElementById('floatCompChart');
   if (!canvas || !window.Chart) return;
+
+  const getNeg    = v => ruleCount(v, 'NEGATIVE_FLOAT');
+  const getNear   = v => ruleCount(v, 'NEAR_CRITICAL_DENSITY');
+  const getHigh   = v => ruleCount(v, 'HIGH_FLOAT');
+  const getCrit   = v => (v?.analysisResults?.criticalCount || 0);
+
+  const labels = ['Negative Float', 'Critical (0d)', 'Near-Critical (1–15d)', 'High Float (>44d)'];
+  const d1 = [getNeg(_v1), getCrit(_v1), getNear(_v1), getHigh(_v1)];
+  const d2 = [getNeg(_v2), getCrit(_v2), getNear(_v2), getHigh(_v2)];
+
+  // Destroy existing chart if any
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
   new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: ['Negative', 'Critical (0)', 'Near-Critical (1–15d)', 'Low (16–44d)', 'High (>44d)'],
+      labels,
       datasets: [
-        { label: 'Prior (Update 6)', data: [18, 94, 142, 321, 287], backgroundColor: 'rgba(100,116,139,0.5)', borderRadius: 4 },
-        { label: 'Current (Update 7)', data: [23, 108, 156, 298, 265], backgroundColor: ['#ef4444','#ef4444','#f59e0b','#22c55e','#22c55e'].map(c => c + 'cc'), borderRadius: 4 }
+        { label: _v1.version + ' (Baseline)', data: d1, backgroundColor: 'rgba(100,116,139,0.45)', borderRadius: 4 },
+        { label: _v2.version + ' (Current)',  data: d2, backgroundColor: ['#ef4444cc','#ef4444cc','#f59e0bcc','#22c55ecc'], borderRadius: 4 }
       ]
     },
     options: {
@@ -363,19 +559,44 @@ function renderFloatChart() {
       scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' } } }
     }
   });
+
+  // Update float table
+  const floatTbody = document.querySelector('.float-summary-table tbody');
+  if (floatTbody) {
+    const rows = [
+      ['Negative (<0)',          getNeg(_v1),  getNeg(_v2)],
+      ['Critical (0)',           getCrit(_v1), getCrit(_v2)],
+      ['Near-Critical (1–15d)',  getNear(_v1), getNear(_v2)],
+      ['High Float (>44d)',      getHigh(_v1), getHigh(_v2)],
+    ];
+    floatTbody.innerHTML = rows.map(([label, p, c]) => {
+      const d = c - p;
+      const cls = d > 0 ? 'text-red' : d < 0 ? 'text-green' : 'text-secondary';
+      return `<tr><td>${label}</td><td>${p}</td><td class="${d !== 0 ? cls + ' font-bold' : ''}">${c}</td><td class="${cls}">${d > 0 ? '+' : ''}${d} ${d > 0 ? '↑' : d < 0 ? '↓' : '–'}</td></tr>`;
+    }).join('');
+  }
 }
 
+// ── Score Delta Chart ─────────────────────────────────────────
 function renderScoreDeltaChart() {
   const canvas = document.getElementById('scoreDeltaChart');
   if (!canvas || !window.Chart) return;
-  const cats = ['Logic Quality', 'Date Integrity', 'Constraints & Float', 'Activity Hygiene', 'Progress Realism', 'Critical Path'];
+
+  const catKeys   = ['logicQuality','dateIntegrity','constraintsFloat','activityHygiene','progressRealism','criticalPathReliability'];
+  const catLabels = ['Logic Quality','Date Integrity','Constraints & Float','Activity Hygiene','Progress Realism','Critical Path'];
+  const scores1   = catKeys.map(k => catScore(_v1, k) ?? 0);
+  const scores2   = catKeys.map(k => catScore(_v2, k) ?? 0);
+
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
   new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: cats,
+      labels: catLabels,
       datasets: [
-        { label: 'Prior (Update 6)', data: [70, 75, 67, 79, 72, 70], backgroundColor: 'rgba(100,116,139,0.4)', borderRadius: 4 },
-        { label: 'Current (Update 7)', data: [68, 74, 65, 78, 71, 69], backgroundColor: 'rgba(14,165,233,0.7)', borderRadius: 4 }
+        { label: _v1.version + ' (Baseline)', data: scores1, backgroundColor: 'rgba(100,116,139,0.4)', borderRadius: 4 },
+        { label: _v2.version + ' (Current)',  data: scores2, backgroundColor: 'rgba(14,165,233,0.7)',  borderRadius: 4 }
       ]
     },
     options: {
@@ -383,18 +604,73 @@ function renderScoreDeltaChart() {
       plugins: { legend: { position: 'top' } },
       scales: {
         x: { grid: { display: false } },
-        y: { min: 55, max: 90, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } }
+        y: { min: 40, max: 100, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } }
       }
     }
   });
+
+  // Update score delta table
+  const scoreTbody = document.querySelector('#comp-scores .data-table tbody');
+  if (scoreTbody) {
+    const rows = catKeys.map((k, i) => {
+      const p = catScore(_v1, k) ?? '—';
+      const c = catScore(_v2, k) ?? '—';
+      const d = (typeof c === 'number' && typeof p === 'number') ? c - p : null;
+      const cls = d !== null ? (d < 0 ? 'text-red' : d > 0 ? 'text-green' : 'text-secondary') : '';
+      return `<tr>
+        <td>${catLabels[i]}</td>
+        <td>${p}</td>
+        <td class="${cls}">${c}</td>
+        <td class="${cls}">${d !== null ? (d > 0 ? '+' : '') + d : '—'}</td>
+        <td>${d !== null ? (d < 0 ? '↓' : d > 0 ? '↑' : '–') : '—'}</td>
+      </tr>`;
+    });
+    const ovrDelta = (_v2.overallScore || 0) - (_v1.overallScore || 0);
+    const ovrCls   = ovrDelta < 0 ? 'text-red' : ovrDelta > 0 ? 'text-green' : 'text-secondary';
+    rows.push(`<tr class="total-row">
+      <td><strong>Overall</strong></td>
+      <td><strong>${_v1.overallScore}</strong></td>
+      <td class="${ovrCls} font-bold">${_v2.overallScore}</td>
+      <td class="${ovrCls}">${ovrDelta > 0 ? '+' : ''}${ovrDelta}</td>
+      <td>${ovrDelta < 0 ? '↓' : ovrDelta > 0 ? '↑' : '–'}</td>
+    </tr>`);
+    scoreTbody.innerHTML = rows.join('');
+  }
 }
 
-function runComparison() {
-  App.showAlert('Comparison updated. Showing Update 6 vs Update 7.', 'success');
+// ── Narrative ────────────────────────────────────────────────
+function renderNarrative() {
+  const el = document.getElementById('compNarrativeBody');
+  if (!el || !_v1 || !_v2) return;
+
+  const scoreChange   = (_v2.overallScore || 0) - (_v1.overallScore || 0);
+  const negDelta      = ruleCount(_v2, 'NEGATIVE_FLOAT') - ruleCount(_v1, 'NEGATIVE_FLOAT');
+  const openEndDelta  = ruleCount(_v2, 'OPEN_ENDS_PREDECESSOR') - ruleCount(_v1, 'OPEN_ENDS_PREDECESSOR');
+  const actDelta      = (_v2.activityCount || 0) - (_v1.activityCount || 0);
+  const scoreDir      = scoreChange > 0 ? 'improved' : scoreChange < 0 ? 'declined' : 'remained stable';
+  const ragLabel      = _v2.overallScore >= 85 ? 'Green' : _v2.overallScore >= 70 ? 'Amber' : 'Red';
+
+  el.innerHTML = `
+    <p>This comparison covers <strong>${_v1.version}</strong> (Data Date: ${App.formatDate(_v1.dataDate)}) to <strong>${_v2.version}</strong> (Data Date: ${App.formatDate(_v2.dataDate)}) for the <strong>${_compProject?.name || 'project'}</strong>.</p>
+
+    <h4 style="margin:16px 0 8px;">Validation Score</h4>
+    <p>The overall score <strong>${scoreDir}</strong> by ${Math.abs(scoreChange)} point${Math.abs(scoreChange) !== 1 ? 's' : ''} from <strong>${_v1.overallScore}</strong> to <strong>${_v2.overallScore}</strong>, placing the schedule in the <strong>${ragLabel}</strong> range.</p>
+
+    <h4 style="margin:16px 0 8px;">Key Changes</h4>
+    <p>${actDelta !== 0 ? `The schedule ${actDelta > 0 ? 'added' : 'removed'} ${Math.abs(actDelta)} activities (${_v1.activityCount} → ${_v2.activityCount}). ` : ''}${negDelta > 0 ? `<strong class="text-red">${negDelta} additional negative float activities</strong> emerged, indicating growing schedule pressure. ` : negDelta < 0 ? `Negative float activities decreased by ${Math.abs(negDelta)}, a positive sign. ` : ''}${openEndDelta > 0 ? `Open-end logic gaps increased by ${openEndDelta}, which should be addressed promptly.` : openEndDelta < 0 ? `Open-end logic gaps decreased by ${Math.abs(openEndDelta)}, improving schedule integrity.` : ''}</p>
+
+    <h4 style="margin:16px 0 8px;">Recommended Actions</h4>
+    <p>${[
+      negDelta > 0 ? `Investigate and resolve the ${ruleCount(_v2, 'NEGATIVE_FLOAT')} negative float activities` : null,
+      openEndDelta > 0 ? `Close the ${ruleCount(_v2, 'OPEN_ENDS_PREDECESSOR')} open predecessor logic gaps` : null,
+      'Confirm the data date is set correctly before the next update',
+      'Review constraint changes that may be masking critical path issues'
+    ].filter(Boolean).map((a, i) => `(${i+1}) ${a}.`).join(' ')}</p>
+  `;
 }
 
 function exportComparison() {
-  App.showAlert('Comparison report exported.', 'success');
+  App.showAlert('Comparison report export coming soon.', 'info');
 }
 
 function exportNarrative() {

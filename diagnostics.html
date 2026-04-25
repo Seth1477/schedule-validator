@@ -311,7 +311,6 @@ function renderCharts(diagData) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Wait for App.init() to finish loading IndexedDB data
   await App.whenReady();
 
   const container = document.getElementById('diagnosticsContainer');
@@ -319,11 +318,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const version = project ? App._resolveCurrentVersion(project) : null;
   const hasReal = version && version.isReal && version.analysisResults;
 
+  // Update breadcrumb and inject projectId into nav links
+  if (project) {
+    const bc = document.getElementById('diagBreadcrumbLink');
+    if (bc) { bc.textContent = project.name; bc.href = `project.html?projectId=${project.id}`; }
+    App._injectProjectIdIntoLinks(project);
+  }
+
   let diagData;
   if (hasReal && version.analysisResults.rules) {
     // Use real scoring rules as diagnostic data
     diagData = version.analysisResults.rules.filter(r => r.count > 0).sort((a, b) => b.penalty - a.penalty);
-    // Map real rules to the format buildDiagCard expects
     diagData = diagData.map(r => ({
       severity: r.severity,
       category: ({
@@ -337,12 +342,39 @@ document.addEventListener('DOMContentLoaded', async () => {
       penalty: r.penalty,
       description: r.description,
       threshold: r.threshold || 'N/A',
-      recommendation: r.recommendation || `Address the ${r.count} activities flagged by this rule to improve your score.`,
+      recommendation: r.recommendation || `Address the ${r.count} activities flagged by this rule.`,
       totalActivities: r.totalActivities || version.activityCount || 0,
       activities: (r.affectedIds || []).map(id => ({
-        id: id, name: '—', wbs: '—', startDate: '', finishDate: '', float: 0, isCritical: false
+        id, name: '—', wbs: '—', startDate: '', finishDate: '', float: 0, isCritical: false
       }))
     }));
+
+    // Update issue summary chips with real counts
+    const countBySev = { critical: 0, high: 0, medium: 0, low: 0 };
+    diagData.forEach(d => { if (countBySev[d.severity] !== undefined) countBySev[d.severity]++; });
+    const total = diagData.length;
+    const chips = document.querySelectorAll('.issue-chip .chip-count');
+    if (chips.length >= 4) {
+      chips[0].textContent = countBySev.critical;
+      chips[1].textContent = countBySev.high;
+      chips[2].textContent = countBySev.medium;
+      chips[3].textContent = total;
+    }
+
+    // Update page subtitle
+    const sub = document.getElementById('diagSubtitle');
+    if (sub) sub.textContent = `${version.activityCount?.toLocaleString() || 0} activities analyzed — ${version.version}, Data Date: ${App.formatDate(version.dataDate)}`;
+
+  } else if (project && !hasReal) {
+    // Project exists but no real upload yet
+    container.innerHTML = `<div style="text-align:center;padding:60px 24px;color:#64748b;">
+      <div style="font-size:48px;margin-bottom:16px;">📋</div>
+      <h3 style="font-size:18px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">No schedule uploaded yet</h3>
+      <p style="font-size:14px;max-width:400px;margin:0 auto 20px;">"${project.name}" doesn't have any uploaded schedules. Upload an XER file to run a diagnostic analysis.</p>
+      <a href="upload.html?projectId=${project.id}" class="btn btn-primary">↑ Upload Schedule</a>
+    </div>`;
+    renderCharts([]);
+    return;
   } else {
     diagData = DEMO_DIAGNOSTICS;
   }
