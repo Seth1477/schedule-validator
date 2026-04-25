@@ -179,12 +179,21 @@ const CAT_LABELS = {
   criticalPathReliability: 'Critical Path Reliability'
 };
 
-// ─── Build lookup maps from parsedData ───────────────────────────────────────
+// ─── Build lookup maps from activityLookup (or parsedData fallback) ──────────
+// upload.html saves `activityLookup` + `wbsLookup` as compact indexed arrays.
+// Older versions stored `parsedData`; support both.
 function buildLookupMaps(version) {
   const actMap = {};
   const wbsMap = {};
-  (version.parsedData?.activities || []).forEach(a => { actMap[a.id] = a; });
-  (version.parsedData?.wbs || []).forEach(w => { wbsMap[w.id] = w; });
+  // Prefer the dedicated compact lookup arrays (saved by upload.html)
+  const actSource = version.activityLookup
+    || version.parsedData?.activities
+    || [];
+  const wbsSource = version.wbsLookup
+    || version.parsedData?.wbs
+    || [];
+  actSource.forEach(a => { actMap[String(a.id)] = a; });
+  wbsSource.forEach(w => { wbsMap[String(w.id)] = w; });
   return { actMap, wbsMap };
 }
 
@@ -204,7 +213,7 @@ function buildDiagData(version) {
     })
     .map(r => {
       const activities = (r.affectedIds || []).map(id => {
-        const act = actMap[id];
+        const act = actMap[String(id)];
         if (!act) return { id: id, name: '—', wbs: '—', startDate: '', finishDate: '', float: 0, isCritical: false };
         const wbs = wbsMap[act.wbsId];
         const wbsLabel = wbs ? (wbs.code && wbs.code !== wbs.name ? `${wbs.code} – ${wbs.name}` : wbs.name || wbs.code || act.wbsId) : (act.wbsId || '—');

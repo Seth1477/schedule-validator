@@ -406,6 +406,30 @@ async function startUpload() {
       const versionLabel = document.getElementById('versionLabel').value ||
         `Update ${existingVersions.length + 1}`;
 
+      // Build compact activity lookup (id → display fields) for diagnostic drill-down
+      // We only store the fields the Diagnostics page needs — not the full parsed object.
+      const activityLookup = parsed.activities.map(a => ({
+        id:           a.id,           // task_id (lookup key matching affectedIds)
+        code:         a.code,         // P6 activity code (display ID)
+        name:         a.name,
+        wbsId:        a.wbsId,
+        plannedStart: a.plannedStart,
+        plannedFinish:a.plannedFinish,
+        earlyStart:   a.earlyStart,
+        earlyFinish:  a.earlyFinish,
+        actualStart:  a.actualStart,
+        actualFinish: a.actualFinish,
+        totalFloat:   a.totalFloat,
+        isCritical:   a.isCritical
+      }));
+
+      // Compact WBS lookup for resolving wbsId → human-readable label
+      const wbsLookup = (parsed.wbs || []).map(w => ({
+        id:   w.id,
+        code: w.code,
+        name: w.name
+      }));
+
       // Build trimmed critical path for storage
       const trimmedCP = {
         longestPath: (cpResult.longestPath || []).slice(0, 40).map(a => ({
@@ -427,14 +451,8 @@ async function startUpload() {
         totalFloat: m.totalFloat
       }));
 
-      // Trim scoring rules
-      const trimmedScores = scores ? {
-        ...scores,
-        rules: (scores.rules || []).map(r => ({
-          ...r,
-          affectedIds: (r.affectedIds || []).slice(0, 10)
-        }))
-      } : null;
+      // Keep scoring rules as-is (affectedIds already limited to 50 per rule in scoring.js)
+      const trimmedScores = scores || null;
 
       const version = {
         id: 'v' + Date.now(),
@@ -455,6 +473,8 @@ async function startUpload() {
         analysisResults: trimmedScores,
         criticalPath: trimmedCP,
         milestones: trimmedMilestones,
+        activityLookup,
+        wbsLookup,
         isReal: true
       };
 

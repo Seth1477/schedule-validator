@@ -74,7 +74,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +missingPredPct.toFixed(1),
       penalty: this._pctPenalty(missingPredPct, 5, 15),
-      affectedIds: missingPred.slice(0, 20).map(a => a.id),
+      affectedIds: missingPred.slice(0, 50).map(a => a.id),
       threshold: '< 5% of incomplete activities (DCMA)',
       description: 'Activities with no predecessor create open-end logic gaps that distort float and the critical path.',
       recommendation: 'Add logical predecessor relationships to all flagged activities to close open ends.'
@@ -95,7 +95,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +missingSuccPct.toFixed(1),
       penalty: this._pctPenalty(missingSuccPct, 5, 15),
-      affectedIds: missingSucc.slice(0, 20).map(a => a.id),
+      affectedIds: missingSucc.slice(0, 50).map(a => a.id),
       threshold: '< 5% of incomplete activities (DCMA)',
       description: 'Activities with no successor create dangling endpoints; float calculations become unreliable.',
       recommendation: 'Add logical successor relationships or link to a project finish milestone.'
@@ -198,7 +198,7 @@ class ScoringEngine {
         totalActivities: actCount,
         percent: +futurePct.toFixed(1),
         penalty: Math.min(20, futureActuals.length * 3),
-        affectedIds: futureActuals.slice(0, 20).map(a => a.id),
+        affectedIds: futureActuals.slice(0, 50).map(a => a.id),
         threshold: '0 activities (any future actual is an error)',
         description: 'Actual dates that fall after the data date indicate recording errors.',
         recommendation: 'Correct actual dates or move the data date forward.'
@@ -218,7 +218,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +(inProgressNoStart.length / actCount * 100).toFixed(1),
       penalty: Math.min(15, inProgressNoStart.length * 2),
-      affectedIds: inProgressNoStart.slice(0, 20).map(a => a.id),
+      affectedIds: inProgressNoStart.slice(0, 50).map(a => a.id),
       threshold: '0 activities',
       description: 'Activities showing progress but lacking an actual start date indicate status reporting errors.',
       recommendation: 'Add actual start dates to all in-progress activities.'
@@ -237,7 +237,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +(completeNoFinish.length / actCount * 100).toFixed(1),
       penalty: Math.min(15, completeNoFinish.length * 2),
-      affectedIds: completeNoFinish.slice(0, 20).map(a => a.id),
+      affectedIds: completeNoFinish.slice(0, 50).map(a => a.id),
       threshold: '0 activities',
       description: 'Activities marked complete but missing actual finish dates corrupt variance analysis.',
       recommendation: 'Record actual finish dates for all completed activities.'
@@ -259,7 +259,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +negFloatPct.toFixed(1),
       penalty: this._pctPenalty(negFloatPct, 0, 20),
-      affectedIds: negFloat.slice(0, 20).map(a => a.id),
+      affectedIds: negFloat.slice(0, 50).map(a => a.id),
       threshold: '0 activities (any negative float is a concern)',
       description: 'Activities with negative total float indicate the schedule cannot achieve its planned dates.',
       recommendation: 'Resolve negative float by adjusting logic, durations, or constraints.'
@@ -280,7 +280,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +hardConPct.toFixed(1),
       penalty: this._pctPenalty(hardConPct, 5, 12),
-      affectedIds: hardConstraints.slice(0, 20).map(a => a.id),
+      affectedIds: hardConstraints.slice(0, 50).map(a => a.id),
       threshold: '< 5% of incomplete activities (DCMA)',
       description: 'Hard constraints (MSO, FNLT, MEO) override logic-driven dates and can mask critical path issues.',
       recommendation: 'Replace hard constraints with logical predecessors or soft constraints where possible.'
@@ -298,7 +298,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +highFloatPct.toFixed(1),
       penalty: this._pctPenalty(highFloatPct, 10, 10),
-      affectedIds: highFloat.slice(0, 20).map(a => a.id),
+      affectedIds: highFloat.slice(0, 50).map(a => a.id),
       threshold: '< 10% of incomplete activities',
       description: 'Activities with high float may indicate missing logic or disconnected schedule segments.',
       recommendation: 'Review logic ties for high-float activities; add successors or constraints if appropriate.'
@@ -322,7 +322,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +longDurPct.toFixed(1),
       penalty: this._pctPenalty(longDurPct, 5, 12),
-      affectedIds: longDuration.slice(0, 20).map(a => a.id),
+      affectedIds: longDuration.slice(0, 50).map(a => a.id),
       threshold: '< 5% of activities (DCMA)',
       description: 'Activities longer than 44 working days reduce visibility and control accuracy.',
       recommendation: 'Break long-duration activities into shorter tasks with intermediate logic ties.'
@@ -340,7 +340,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +missingCalPct.toFixed(1),
       penalty: this._pctPenalty(missingCalPct, 2, 10),
-      affectedIds: missingCal.slice(0, 20).map(a => a.id),
+      affectedIds: missingCal.slice(0, 50).map(a => a.id),
       threshold: '0 activities (all should have calendars)',
       description: 'Activities without calendars use default settings which may not reflect actual work patterns.',
       recommendation: 'Assign appropriate work calendars to all activities.'
@@ -358,7 +358,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +loePct.toFixed(1),
       penalty: this._pctPenalty(loePct, 10, 8),
-      affectedIds: loeActivities.slice(0, 20).map(a => a.id),
+      affectedIds: loeActivities.slice(0, 50).map(a => a.id),
       threshold: '< 10% of total activities',
       description: 'Excessive LOE activities reduce schedule granularity and obscure the critical path.',
       recommendation: 'Convert LOE summaries into discrete task-dependent activities where possible.'
@@ -378,7 +378,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +(zeroDurNonMile.length / actCount * 100).toFixed(1),
       penalty: Math.min(8, zeroDurNonMile.length * 0.5),
-      affectedIds: zeroDurNonMile.slice(0, 20).map(a => a.id),
+      affectedIds: zeroDurNonMile.slice(0, 50).map(a => a.id),
       threshold: '0 (non-milestone tasks should have duration)',
       description: 'Task activities with zero duration should be milestones or have estimated durations.',
       recommendation: 'Change activity type to milestone or assign a realistic duration.'
@@ -412,7 +412,7 @@ class ScoringEngine {
         totalActivities: incompleteCount,
         percent: +oosPct.toFixed(1),
         penalty: this._pctPenalty(oosPct, 5, 15),
-        affectedIds: oosActivities.slice(0, 20).map(a => a.id),
+        affectedIds: oosActivities.slice(0, 50).map(a => a.id),
         threshold: '< 5% of activities',
         description: 'Activities that started before their FS predecessors finished indicate out-of-sequence execution.',
         recommendation: 'Update predecessor relationships or modify activity status to reflect actual workflow.'
@@ -444,7 +444,7 @@ class ScoringEngine {
         totalActivities: incompleteCount,
         percent: +behindPct.toFixed(1),
         penalty: this._pctPenalty(behindPct, 10, 12),
-        affectedIds: behindSchedule.slice(0, 20).map(a => a.id),
+        affectedIds: behindSchedule.slice(0, 50).map(a => a.id),
         threshold: '< 10% of incomplete activities',
         description: 'Activities whose actual progress significantly trails their planned timeline.',
         recommendation: 'Update remaining durations or re-sequence activities to reflect realistic progress.'
@@ -464,7 +464,7 @@ class ScoringEngine {
       totalActivities: actCount,
       percent: +(startedNoProgress.length / actCount * 100).toFixed(1),
       penalty: Math.min(10, startedNoProgress.length * 1.5),
-      affectedIds: startedNoProgress.slice(0, 20).map(a => a.id),
+      affectedIds: startedNoProgress.slice(0, 50).map(a => a.id),
       threshold: '0 activities',
       description: 'Activities that have started but show zero percent complete suggest status is not being updated.',
       recommendation: 'Update percent complete for all in-progress activities.'
@@ -486,7 +486,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +nearCritPct.toFixed(1),
       penalty: this._pctPenalty(nearCritPct, 15, 10),
-      affectedIds: nearCritical.slice(0, 20).map(a => a.id),
+      affectedIds: nearCritical.slice(0, 50).map(a => a.id),
       threshold: '< 15% of incomplete activities',
       description: 'A high density of near-critical activities means the schedule has limited contingency.',
       recommendation: 'Review near-critical activities for opportunities to add buffer or re-sequence work.'
@@ -522,7 +522,7 @@ class ScoringEngine {
       totalActivities: incompleteCount,
       percent: +critPct.toFixed(1),
       penalty: critPenalty,
-      affectedIds: criticalActs.slice(0, 20).map(a => a.id),
+      affectedIds: criticalActs.slice(0, 50).map(a => a.id),
       threshold: '5-20% of activities typically on critical path',
       description: critPct > 30
         ? 'An unusually high percentage of critical activities suggests over-constrained logic.'
