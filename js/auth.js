@@ -128,6 +128,17 @@
       return { ...usage, limit: FREE_UPLOAD_LIMIT };
     },
 
+    /** Reset password — verifies email exists, then updates the stored hash */
+    resetPassword(email, newPassword) {
+      email = email.toLowerCase().trim();
+      const users = getUsers();
+      if (!users[email]) return { ok: false, error: 'No account found with that email address.' };
+      if (newPassword.length < 6) return { ok: false, error: 'Password must be at least 6 characters.' };
+      users[email].passwordHash = hashPassword(newPassword);
+      saveUsers(users);
+      return { ok: true };
+    },
+
     /** Upgrade to pro (placeholder — wire to Stripe) */
     upgradeToPro() {
       const user = this.currentUser();

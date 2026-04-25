@@ -196,7 +196,8 @@
   <div id="formError" class="form-error"></div>
   <div id="formSuccess" class="form-success"></div>
 
-  <div class="tabs">
+  <!-- Tabs (hidden while on reset panel) -->
+  <div class="tabs" id="authTabs">
     <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
     <button class="tab-btn" onclick="switchTab('signup')">Create Account</button>
   </div>
@@ -256,6 +257,31 @@
       <button type="submit" class="btn-primary" id="signupBtn">Create Free Account</button>
     </form>
     <p class="terms-note">By creating an account you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.</p>
+  </div>
+
+  <!-- RESET PASSWORD (hidden by default) -->
+  <div class="tab-pane" id="pane-reset">
+    <button onclick="hideForgot()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:#7c6fe0;font-size:14px;font-weight:600;cursor:pointer;padding:0;margin-bottom:24px;">
+      ← Back to Sign In
+    </button>
+    <h2 class="login-form-title">Reset your password</h2>
+    <p class="login-form-sub" style="margin-bottom:28px;">Enter your account email and choose a new password. Your project data will not be affected.</p>
+
+    <form onsubmit="handleReset(event)">
+      <div class="form-group">
+        <label class="form-label">Account email</label>
+        <input type="email" id="resetEmail" class="form-input" placeholder="you@company.com" required autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New password</label>
+        <input type="password" id="resetPassword" class="form-input" placeholder="At least 6 characters" required autocomplete="new-password"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm new password</label>
+        <input type="password" id="resetPasswordConfirm" class="form-input" placeholder="Repeat new password" required autocomplete="new-password"/>
+      </div>
+      <button type="submit" class="btn-primary" id="resetBtn">Set New Password</button>
+    </form>
   </div>
 </div>
 
@@ -331,7 +357,54 @@
   }
 
   function showForgot() {
-    showError('Password reset is coming soon. Please contact support@constructcheck.com');
+    clearMessages();
+    document.getElementById('authTabs').style.display = 'none';
+    document.getElementById('pane-login').classList.remove('active');
+    document.getElementById('pane-signup').classList.remove('active');
+    document.getElementById('pane-reset').classList.add('active');
+    // Pre-fill email if they already typed it
+    const typed = document.getElementById('loginEmail').value;
+    if (typed) document.getElementById('resetEmail').value = typed;
+    document.getElementById('resetEmail').focus();
+  }
+
+  function hideForgot() {
+    clearMessages();
+    document.getElementById('authTabs').style.display = 'flex';
+    document.getElementById('pane-reset').classList.remove('active');
+    document.getElementById('pane-login').classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+  }
+
+  function handleReset(e) {
+    e.preventDefault();
+    clearMessages();
+    const email   = document.getElementById('resetEmail').value.trim();
+    const pw      = document.getElementById('resetPassword').value;
+    const pwc     = document.getElementById('resetPasswordConfirm').value;
+    const btn     = document.getElementById('resetBtn');
+
+    if (pw !== pwc) { showError('Passwords do not match.'); return; }
+
+    btn.textContent = 'Saving…'; btn.disabled = true;
+    setTimeout(() => {
+      const result = CC.Auth.resetPassword(email, pw);
+      if (result.ok) {
+        showSuccess('Password updated! Signing you in…');
+        setTimeout(() => {
+          const loginResult = CC.Auth.login(email, pw);
+          if (loginResult.ok) {
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = params.get('redirect') || 'dashboard.html';
+          } else {
+            hideForgot();
+          }
+        }, 1000);
+      } else {
+        showError(result.error);
+        btn.textContent = 'Set New Password'; btn.disabled = false;
+      }
+    }, 400);
   }
 </script>
 </body>
