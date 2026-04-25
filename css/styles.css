@@ -1607,6 +1607,69 @@ body {
 .chip-medium { background: #fffbeb; color: #92400e; }
 .chip-all { background: #f1f5f9; color: #475569; }
 
+/* Diagnostic drill-down table: contained scroll, auto-fit columns */
+.diag-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 420px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.diag-act-table {
+  table-layout: auto;
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+.diag-act-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  box-shadow: 0 1px 0 #e2e8f0;
+  white-space: nowrap;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  user-select: none;
+}
+.diag-act-table tbody td {
+  padding: 9px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.diag-act-table tbody tr:last-child td { border-bottom: none; }
+.diag-act-table tbody tr:hover td { background: #f8fafc; }
+
+/* Column resize handle — appears as a draggable divider on th right edge */
+.col-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 3;
+}
+.col-resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background: #cbd5e1;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.col-resize-handle:hover::after,
+.col-resize-handle:active::after { opacity: 1; }
+
 /* Diagnostic Cards */
 .diagnostic-card { border-left: 4px solid #e2e8f0; }
 .diagnostic-card[data-severity="critical"] { border-left-color: #ef4444; }

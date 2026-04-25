@@ -904,6 +904,57 @@ const App = {
   setEl(selector, text) {
     const el = document.querySelector(selector);
     if (el) el.textContent = text;
+  },
+
+  // ─── Data Export / Import ─────────────────────────────────────────────────
+  // Export everything for the current user as a JSON backup file.
+  // Code pushes never touch IndexedDB — data only changes when you upload or
+  // delete inside the app. This export is a manual safety net.
+  async exportAccountData() {
+    await this.whenReady();
+    const email    = this._currentEmail();
+    const payload  = {
+      _version:  2,
+      _exported: new Date().toISOString(),
+      _email:    email,
+      projects:  this.projects,
+      versions:  this.scheduleVersions
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `ConstructCheck_Backup_${email.split('@')[0]}_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    this.showAlert('Backup downloaded. Keep this file safe — it contains all your project data.', 'success');
+  },
+
+  async importAccountData(file) {
+    const text = await file.text();
+    let payload;
+    try { payload = JSON.parse(text); } catch(e) {
+      this.showAlert('Invalid backup file — could not parse JSON.', 'error');
+      return;
+    }
+    if (!payload.projects || !payload.versions) {
+      this.showAlert('Invalid backup file — missing projects or versions.', 'error');
+      return;
+    }
+    if (!confirm(`This will REPLACE all current data for this account with the backup from ${payload._exported?.slice(0,10) || 'unknown date'}.\n\nAre you sure?`)) return;
+
+    this.projects         = payload.projects  || [];
+    this.scheduleVersions = payload.versions  || [];
+    this.saveToStorage();
+    this.showAlert(`Restored ${this.projects.length} projects and ${this.scheduleVersions.length} schedule versions.`, 'success');
+    setTimeout(() => window.location.reload(), 1800);
+  },
+
+  openImportPicker() {
+    const input    = document.createElement('input');
+    input.type     = 'file';
+    input.accept   = '.json';
+    input.onchange = e => { if (e.target.files[0]) this.importAccountData(e.target.files[0]); };
+    input.click();
   }
 };
 
