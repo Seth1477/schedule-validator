@@ -496,6 +496,41 @@ body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 0 0 8px 8px;
+  /* Hide the native scrollbar — the sticky rail below replaces it */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.table-scroll-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sticky horizontal scroll rail — always visible at bottom of viewport */
+.sticky-scroll-rail {
+  position: sticky;
+  bottom: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 8px 8px;
+  z-index: 5;
+}
+.sticky-scroll-rail::-webkit-scrollbar {
+  height: 8px;
+}
+.sticky-scroll-rail::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.sticky-scroll-rail::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.sticky-scroll-rail::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.sticky-scroll-rail-inner {
+  height: 1px; /* Creates the scroll width without adding visual content */
 }
 
 .data-table {
@@ -1234,7 +1269,8 @@ body {
   margin-bottom: 32px;
 }
 
-.milestone-row {
+/* Milestone list widget rows (non-table, flex layout) */
+.milestone-list-row {
   display: flex;
   gap: 16px;
   padding: 12px 0;
@@ -1242,7 +1278,7 @@ body {
   align-items: center;
 }
 
-.milestone-row:last-child {
+.milestone-list-row:last-child {
   border-bottom: none;
 }
 
@@ -1538,9 +1574,22 @@ body {
 .score-badge-amber { background: #fef9c3; color: #92400e; }
 .score-badge-red { background: #fee2e2; color: #dc2626; }
 
-/* Milestone Row */
-.milestone-row { background: #fafafe; }
-.milestone-row td { font-weight: 600; }
+/* Milestone rows inside data tables — color highlight only, layout unchanged */
+.data-table tbody tr.milestone-row {
+  display: table-row; /* Override any inherited flex/block */
+  background: rgba(59, 130, 246, 0.05);
+}
+.data-table tbody tr.milestone-row:hover {
+  background: rgba(59, 130, 246, 0.10);
+}
+.data-table tbody tr.milestone-row td {
+  font-weight: 400; /* Same weight as regular rows — no formatting difference */
+  color: #1e40af;   /* Blue text to distinguish milestones by color */
+}
+.data-table tbody tr.milestone-row td:first-child {
+  color: #64748b; /* Keep the # index column neutral */
+  font-weight: 400;
+}
 
 /* Diagnostics Page */
 .issue-chips { display: flex; gap: 12px; flex-wrap: wrap; }

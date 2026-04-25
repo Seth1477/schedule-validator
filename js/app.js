@@ -198,7 +198,56 @@ const App = {
         btn.classList.add('active');
         const pane = container.querySelector(`#${tabId}`);
         if (pane) pane.classList.add('active');
+        // Re-init sticky scrollbars for newly visible tab content
+        requestAnimationFrame(() => this.initStickyScrollbars());
       });
+    });
+  },
+
+  // ─── Sticky Horizontal Scrollbars ────────────────────────────
+  // Injects a position:sticky bottom-of-viewport scroll rail next to every
+  // .table-scroll-wrapper so the user can drag left/right without scrolling
+  // to the bottom of the table first.
+  initStickyScrollbars() {
+    document.querySelectorAll('.table-scroll-wrapper').forEach(wrapper => {
+      if (wrapper.dataset.stickyInit) return;
+      wrapper.dataset.stickyInit = '1';
+
+      // Build the sticky rail + inner sizer
+      const rail = document.createElement('div');
+      rail.className = 'sticky-scroll-rail';
+      const inner = document.createElement('div');
+      inner.className = 'sticky-scroll-rail-inner';
+      rail.appendChild(inner);
+
+      // Insert the rail immediately after the wrapper in the DOM
+      wrapper.parentNode.insertBefore(rail, wrapper.nextSibling);
+
+      // Sync the inner div width to match the table's full scroll width
+      const syncWidth = () => {
+        inner.style.width = wrapper.scrollWidth + 'px';
+      };
+      syncWidth();
+
+      // Two-way scroll sync without infinite loops
+      let syncing = false;
+      rail.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true;
+        wrapper.scrollLeft = rail.scrollLeft;
+        requestAnimationFrame(() => { syncing = false; });
+      });
+      wrapper.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true;
+        rail.scrollLeft = wrapper.scrollLeft;
+        requestAnimationFrame(() => { syncing = false; });
+      });
+
+      // Keep width in sync if the table resizes (e.g. new rows added)
+      if (window.ResizeObserver) {
+        new ResizeObserver(syncWidth).observe(wrapper);
+      }
     });
   },
 
@@ -322,6 +371,8 @@ const App = {
     if (page === 'project') this.renderProjectDashboard();
     if (page === 'diagnostics') this.renderDiagnostics();
     if (page === 'comparison') this.renderComparison();
+    // Initialize sticky scrollbars for all visible tables on this page
+    requestAnimationFrame(() => this.initStickyScrollbars());
   },
 
   renderProjectsList() {

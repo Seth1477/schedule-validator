@@ -670,6 +670,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderVersionHistory();
   renderTrendChart();
   renderScoringTable();
+  // Sticky scrollbars for all table wrappers (active tab + re-init on tab switch)
+  requestAnimationFrame(() => App.initStickyScrollbars());
 });
 </script>
 <script>
