@@ -89,6 +89,7 @@
           </div>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openEditProjectModal()">✏ Edit Project</button>
           <a href="upload.html" class="btn btn-primary btn-sm">↑ Upload Update</a>
           <a href="comparison.html" class="btn btn-secondary btn-sm">⇄ Compare</a>
           <button class="btn btn-secondary btn-sm" onclick="exportNarrative()">⬇ Export</button>
@@ -337,6 +338,60 @@
 
     </div><!-- end tabs -->
   </main>
+</div>
+
+<!-- Edit Project Modal -->
+<div id="editProjectModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:32px;width:min(600px,94vw);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <h2 style="font-size:18px;font-weight:700;color:#1e1b4b;margin:0;">Edit Project Details</h2>
+      <button onclick="closeEditProjectModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#94a3b8;line-height:1;">×</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="grid-column:1/-1;">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Project Name</label>
+        <input id="ep_name" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="Project name" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Client</label>
+        <input id="ep_client" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="Client name" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Location</label>
+        <input id="ep_location" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="City, State" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Contract Value</label>
+        <input id="ep_contractValue" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="e.g. $485M" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Contract Type</label>
+        <input id="ep_contractType" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="e.g. GMP, Lump Sum" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Planned Start</label>
+        <input id="ep_startDate" type="date" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Planned Finish</label>
+        <input id="ep_plannedFinish" type="date" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" />
+      </div>
+      <div style="grid-column:1/-1;">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Tags <span style="font-weight:400;text-transform:none;color:#94a3b8;">(comma-separated)</span></label>
+        <input id="ep_tags" type="text" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;" placeholder="e.g. Hospital, Healthcare, GMP" />
+      </div>
+      <div style="grid-column:1/-1;">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Description / Write-up</label>
+        <textarea id="ep_description" rows="4" style="width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;color:#1e293b;outline:none;resize:vertical;font-family:inherit;" placeholder="Project description, notes, scope summary…"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid #f1f5f9;">
+      <button onclick="closeEditProjectModal()" style="padding:10px 20px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
+      <button onclick="saveEditedProject()" style="padding:10px 24px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Save Changes</button>
+    </div>
+  </div>
 </div>
 
 <script src="js/learn-data.js"></script>
@@ -655,6 +710,70 @@ function exportNarrative() {
   a.click();
   App.showAlert('Narrative exported.', 'success');
 }
+
+// ────────────────────────────────────────────────────────────────
+// EDIT PROJECT MODAL
+// ────────────────────────────────────────────────────────────────
+function openEditProjectModal() {
+  const project = App._resolveCurrentProject();
+  if (!project) { App.showAlert('No project loaded.', 'error'); return; }
+
+  // Helper to format a date string as YYYY-MM-DD for <input type="date">
+  const toInputDate = (str) => {
+    if (!str) return '';
+    try {
+      const d = new Date(str);
+      if (isNaN(d)) return '';
+      return d.toISOString().split('T')[0];
+    } catch(e) { return ''; }
+  };
+
+  document.getElementById('ep_name').value         = project.name || '';
+  document.getElementById('ep_client').value        = project.client || '';
+  document.getElementById('ep_location').value      = project.location || '';
+  document.getElementById('ep_contractValue').value = project.contractValue || '';
+  document.getElementById('ep_contractType').value  = project.contractType || '';
+  document.getElementById('ep_startDate').value     = toInputDate(project.startDate);
+  document.getElementById('ep_plannedFinish').value = toInputDate(project.plannedFinish);
+  document.getElementById('ep_tags').value          = (project.tags || []).join(', ');
+  document.getElementById('ep_description').value   = project.description || '';
+
+  const modal = document.getElementById('editProjectModal');
+  modal.style.display = 'flex';
+}
+
+function closeEditProjectModal() {
+  document.getElementById('editProjectModal').style.display = 'none';
+}
+
+function saveEditedProject() {
+  const project = App._resolveCurrentProject();
+  if (!project) return;
+
+  const get = (id) => document.getElementById(id).value.trim();
+
+  project.name          = get('ep_name') || project.name;
+  project.client        = get('ep_client');
+  project.location      = get('ep_location');
+  project.contractValue = get('ep_contractValue');
+  project.contractType  = get('ep_contractType');
+  project.startDate     = get('ep_startDate');
+  project.plannedFinish = get('ep_plannedFinish');
+  project.description   = get('ep_description');
+  project.tags          = get('ep_tags').split(',').map(t => t.trim()).filter(Boolean);
+
+  App.saveToStorage();
+  closeEditProjectModal();
+
+  // Re-render header fields immediately
+  App.renderProjectDashboard();
+  App.showAlert('Project details saved.', 'success');
+}
+
+// Close modal on backdrop click
+document.getElementById('editProjectModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditProjectModal();
+});
 
 // ────────────────────────────────────────────────────────────────
 // BOOT: wait for App.init() (async IndexedDB) then render all tabs

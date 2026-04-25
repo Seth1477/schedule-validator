@@ -1614,6 +1614,8 @@ body {
   max-height: 420px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
+  /* Reserve scrollbar gutter so the bar never overlaps the rightmost column */
+  scrollbar-gutter: stable;
 }
 .diag-act-table {
   table-layout: auto;

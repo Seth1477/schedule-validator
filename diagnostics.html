@@ -38,8 +38,10 @@
     .card { box-shadow: none !important; border: 1px solid #d1d5db !important; break-inside: avoid; page-break-inside: avoid; margin-bottom: 8pt !important; }
 
     /* Charts row stays side-by-side, constrained height */
-    .grid-2 { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8pt !important; }
-    .chart-container { height: 160px !important; }
+    .grid-2 { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8pt !important; break-inside: avoid; }
+    .chart-container { height: 160px !important; overflow: visible !important; position: relative !important; }
+    /* Force canvas to fill its container exactly — critical for Chart.js in print */
+    .chart-container canvas { display: block !important; width: 100% !important; height: 100% !important; max-width: 100% !important; }
     .card-title { font-size: 11pt !important; margin-bottom: 8pt !important; }
 
     /* Diagnostic cards compact */
@@ -699,8 +701,26 @@ function printReportCard() {
     bar.innerHTML = html;
   }
 
-  // 4. Print (browser dialog)
-  window.print();
+  // 4. Force Chart.js instances to repaint at print dimensions before dialog
+  const chartContainers = document.querySelectorAll('.chart-container');
+  const origHeights = [];
+  chartContainers.forEach((el, i) => {
+    origHeights[i] = el.style.height;
+    el.style.height = '160px';
+  });
+  Object.values(window.Chart?.instances || {}).forEach(chart => {
+    try { chart.resize(); } catch(e) {}
+  });
+
+  // Short delay so charts repaint before the browser captures the print layout
+  setTimeout(() => {
+    window.print();
+    // Restore after print dialog closes
+    chartContainers.forEach((el, i) => { el.style.height = origHeights[i]; });
+    Object.values(window.Chart?.instances || {}).forEach(chart => {
+      try { chart.resize(); } catch(e) {}
+    });
+  }, 200);
 }
 
 // ─── Excel Export ─────────────────────────────────────────────────────────────
