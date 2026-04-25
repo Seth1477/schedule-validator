@@ -1,3 +1,3 @@
-# Schedule Validator
+# Construct Check
 
-Construction schedule analytics and validation platform. DCMA+ scoring, critical path analysis, Primavera P6 XER import.
+Construct Check — DCMA+ schedule validation platform. DCMA+ scoring, critical path analysis, Primavera P6 XER import.

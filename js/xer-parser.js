@@ -109,7 +109,11 @@ class XERParser {
       duration: parseFloat(t.target_drtn_hr_cnt || 0) / 8,
       remainDuration: parseFloat(t.remain_drtn_hr_cnt || 0) / 8,
       actualDuration: parseFloat(t.act_drtn_hr_cnt || 0) / 8,
-      percentComplete: parseFloat(t.phys_complete_pct || t.target_pct_complete || 0),
+      percentComplete: (() => {
+        const raw = parseFloat(t.phys_complete_pct || t.target_pct_complete || 0);
+        // P6 XER stores phys_complete_pct as 0.0–1.0 decimal; convert to 0–100
+        return raw > 1 ? raw : raw * 100;
+      })(),
       earlyStart: t.early_start_date || '',
       earlyFinish: t.early_end_date || '',
       lateStart: t.late_start_date || '',

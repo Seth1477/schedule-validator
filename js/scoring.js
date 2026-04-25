@@ -548,8 +548,8 @@ class ScoringEngine {
       return Math.min(maxPenalty, actualPct * (maxPenalty / 10));
     }
     if (actualPct <= thresholdPct) {
-      // Below threshold — small proportional penalty
-      return actualPct / thresholdPct * (maxPenalty * 0.3);
+      // Below threshold — passes DCMA check, no penalty
+      return 0;
     }
     // Above threshold — significant penalty scaling toward max
     const excess = (actualPct - thresholdPct) / thresholdPct;

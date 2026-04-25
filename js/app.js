@@ -200,25 +200,6 @@ const App = {
         if (pane) pane.classList.add('active');
       });
     });
-
-    const dropZone = document.querySelector('.upload-zone');
-    if (dropZone) {
-      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-      dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) this.handleFileUpload(files[0]);
-      });
-
-      const fileInput = document.querySelector('#xerFileInput');
-      if (fileInput) {
-        fileInput.addEventListener('change', e => {
-          if (e.target.files.length > 0) this.handleFileUpload(e.target.files[0]);
-        });
-      }
-    }
   },
 
   handleFileUpload(file) {
