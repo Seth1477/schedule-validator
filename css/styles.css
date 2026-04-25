@@ -1619,14 +1619,19 @@ body {
   table-layout: auto;
   width: 100%;
   min-width: 700px;
-  border-collapse: collapse;
+  /* separate + spacing:0 is required for position:sticky on thead to work
+     correctly — collapse merges borders in a way that lets rows bleed under
+     the sticky header when scrolling vertically. */
+  border-collapse: separate;
+  border-spacing: 0;
 }
 .diag-act-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
   background: #f8fafc;
-  box-shadow: 0 1px 0 #e2e8f0;
+  /* Bottom border via box-shadow keeps it visible under border-separate */
+  box-shadow: 0 2px 0 #e2e8f0;
   white-space: nowrap;
   padding: 10px 14px;
   font-size: 11px;
@@ -1635,13 +1640,18 @@ body {
   text-transform: uppercase;
   color: #64748b;
   user-select: none;
+  /* Right border between header cells */
+  border-right: 1px solid #f1f5f9;
 }
+.diag-act-table thead th:last-child { border-right: none; }
 .diag-act-table tbody td {
   padding: 9px 14px;
   font-size: 13px;
   border-bottom: 1px solid #f1f5f9;
+  border-right: 1px solid #f8fafc;
   vertical-align: middle;
 }
+.diag-act-table tbody td:last-child { border-right: none; }
 .diag-act-table tbody tr:last-child td { border-bottom: none; }
 .diag-act-table tbody tr:hover td { background: #f8fafc; }
 
