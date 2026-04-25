@@ -178,8 +178,177 @@
       document.querySelectorAll('[data-auth-uploads]').forEach(el => {
         el.textContent = `${usage.uploads} / ${usage.plan === 'pro' ? '∞' : usage.limit}`;
       });
+
+      // Make the sidebar user block clickable — opens account panel
+      const sidebarUser = document.querySelector('.sidebar-bottom .sidebar-user, .sidebar-user');
+      if (sidebarUser && !sidebarUser.dataset.accountBound) {
+        sidebarUser.dataset.accountBound = '1';
+        sidebarUser.style.cursor = 'pointer';
+        sidebarUser.title = 'View account';
+        sidebarUser.addEventListener('click', (e) => {
+          // Don't open if they clicked the logout button itself
+          if (e.target.closest('.sidebar-logout-btn')) return;
+          showAccountPanel();
+        });
+      }
     },
   };
+
+  /* ─── Inject clickable sidebar-user hover style ─────────────── */
+  (function() {
+    const s = document.createElement('style');
+    s.textContent = `
+      .sidebar-bottom .sidebar-user:hover,
+      .sidebar-user:not([data-no-hover]):hover {
+        background: rgba(124,111,224,0.15) !important;
+        border-radius: 10px;
+        transition: background 0.2s;
+      }
+    `;
+    document.head.appendChild(s);
+  })();
+
+  /* ─── Account Panel ──────────────────────────────────────────── */
+  function showAccountPanel() {
+    const existing = document.getElementById('cc-account-panel');
+    if (existing) { existing.style.display = 'flex'; return; }
+
+    const user   = Auth.currentUser();
+    const usage  = Auth.getUsage();
+    if (!user) return;
+
+    const isAdmin   = ADMIN_EMAILS.includes(user.email.toLowerCase());
+    const isPro     = isAdmin || usage.plan === 'pro';
+    const planLabel = isAdmin ? 'Admin ★' : isPro ? 'Pro' : 'Free Trial';
+    const planColor = isPro ? '#7c6fe0' : '#94a3b8';
+    const uploadsUsed = usage.uploads || 0;
+    const uploadsLimit = isPro ? null : usage.limit;
+    const uploadPct = uploadsLimit ? Math.min(100, Math.round(uploadsUsed / uploadsLimit * 100)) : 100;
+
+    const joined = user.createdAt
+      ? new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '—';
+
+    // Avatar initials
+    const parts = user.name.trim().split(' ');
+    const initials = parts.length > 1
+      ? parts[0][0].toUpperCase() + parts[parts.length - 1][0].toUpperCase()
+      : user.name.slice(0, 2).toUpperCase();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cc-account-panel';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,30,0.6);display:flex;align-items:center;justify-content:center;z-index:9500;backdrop-filter:blur(4px);';
+
+    overlay.innerHTML = `
+      <div id="cc-account-inner" style="background:#fff;border-radius:20px;width:min(480px,94vw);max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);font-family:inherit;">
+
+        <!-- Header band -->
+        <div style="background:linear-gradient(135deg,#1a1535,#0d0b1e);border-radius:20px 20px 0 0;padding:32px 28px 24px;position:relative;">
+          <button id="ccAccountClose" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.12);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">×</button>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#7c6fe0,#a593f5);color:#fff;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${initials}</div>
+            <div>
+              <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:4px;">${user.name}</div>
+              <div style="font-size:13px;color:#94a3b8;">${user.email}</div>
+              <span style="display:inline-block;margin-top:6px;background:${planColor}22;color:${planColor};border:1px solid ${planColor}55;border-radius:6px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">${planLabel}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:24px 28px;display:flex;flex-direction:column;gap:20px;">
+
+          <!-- Info rows -->
+          <div style="background:#f8fafc;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:13px;color:#64748b;font-weight:500;">Email</span>
+              <span style="font-size:13px;font-weight:600;color:#1e293b;">${user.email}</span>
+            </div>
+            <div style="height:1px;background:#e2e8f0;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:13px;color:#64748b;font-weight:500;">Plan</span>
+              <span style="font-size:13px;font-weight:700;color:${planColor};">${planLabel}</span>
+            </div>
+            <div style="height:1px;background:#e2e8f0;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:13px;color:#64748b;font-weight:500;">Member since</span>
+              <span style="font-size:13px;font-weight:600;color:#1e293b;">${joined}</span>
+            </div>
+          </div>
+
+          <!-- Upload usage -->
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:13px;font-weight:600;color:#374151;">Schedule Uploads</span>
+              <span style="font-size:13px;color:#64748b;">${uploadsUsed} / ${uploadsLimit != null ? uploadsLimit : '∞'}</span>
+            </div>
+            ${uploadsLimit != null ? `
+            <div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${uploadPct}%;background:${uploadPct >= 100 ? '#ef4444' : '#7c6fe0'};border-radius:3px;transition:width 0.4s;"></div>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:5px;">${uploadsLimit - uploadsUsed > 0 ? `${uploadsLimit - uploadsUsed} upload${uploadsLimit - uploadsUsed !== 1 ? 's' : ''} remaining on Free Trial` : 'Free upload limit reached — upgrade for unlimited'}</div>
+            ` : `<div style="font-size:11px;color:#7c6fe0;margin-top:2px;">Unlimited uploads on ${planLabel}</div>`}
+          </div>
+
+          <!-- Change password -->
+          <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <button id="ccPwToggle" onclick="document.getElementById('ccPwForm').style.display=document.getElementById('ccPwForm').style.display==='none'?'block':'none'; this.textContent=document.getElementById('ccPwForm').style.display==='block'?'▲ Change Password':'▼ Change Password';"
+              style="width:100%;padding:14px 18px;background:#f8fafc;border:none;text-align:left;font-size:14px;font-weight:600;color:#374151;cursor:pointer;display:flex;align-items:center;gap:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c6fe0" stroke-width="2.2" style="flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+              ▼ Change Password
+            </button>
+            <div id="ccPwForm" style="display:none;padding:16px 18px;border-top:1px solid #e2e8f0;">
+              <div id="ccPwError" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;"></div>
+              <div id="ccPwSuccess" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;"></div>
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px;">New password</label>
+                <input id="ccNewPw" type="password" placeholder="At least 6 characters" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;outline:none;" />
+              </div>
+              <div style="margin-bottom:12px;">
+                <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px;">Confirm password</label>
+                <input id="ccConfirmPw" type="password" placeholder="Repeat new password" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;outline:none;" />
+              </div>
+              <button id="ccSavePw" style="padding:9px 20px;background:#7c6fe0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Save New Password</button>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <button onclick="CC.Auth.logout()" style="width:100%;padding:12px;border:1.5px solid #fecaca;border-radius:10px;background:#fff;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.2s;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#fff'">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign Out
+          </button>
+
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+    document.getElementById('ccAccountClose').addEventListener('click', () => { overlay.style.display = 'none'; });
+
+    // Change password handler
+    document.getElementById('ccSavePw').addEventListener('click', () => {
+      const pw  = document.getElementById('ccNewPw').value;
+      const pw2 = document.getElementById('ccConfirmPw').value;
+      const errEl = document.getElementById('ccPwError');
+      const okEl  = document.getElementById('ccPwSuccess');
+      errEl.style.display = 'none'; okEl.style.display = 'none';
+
+      if (pw !== pw2) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+
+      const result = Auth.resetPassword(user.email, pw);
+      if (result.ok) {
+        okEl.textContent = 'Password updated successfully.';
+        okEl.style.display = 'block';
+        document.getElementById('ccNewPw').value = '';
+        document.getElementById('ccConfirmPw').value = '';
+      } else {
+        errEl.textContent = result.error;
+        errEl.style.display = 'block';
+      }
+    });
+  }
 
   /* ─── Paywall Modal ─────────────────────────────────────────── */
   function showPaywallModal() {
