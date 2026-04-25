@@ -322,17 +322,45 @@
 
       <!-- VERSION HISTORY TAB -->
       <div class="tab-pane" id="tab-history">
+
+        <!-- Summary Bridge Cards -->
+        <div id="versionSummaryBar" class="mb-6"></div>
+
+        <!-- Score Trend Sparkline -->
+        <div class="card mb-6" id="versionSparkCard" style="display:none;">
+          <div class="card-header" style="display:flex;align-items:center;gap:8px;">
+            <h2 class="card-title" style="flex:1;">Score Trend Across Updates</h2>
+            <span id="versionTrendBadge" class="card-badge"></span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:56px;padding:8px 0 4px;" id="sparkBars"></div>
+          <div id="sparkLabels" style="display:flex;gap:4px;margin-top:4px;"></div>
+        </div>
+
+        <!-- History Table -->
         <div class="card">
           <div class="card-header">
             <h2 class="card-title">Schedule Upload History</h2>
             <a href="upload.html" class="btn btn-primary btn-sm">↑ Upload New Update</a>
           </div>
-          <table class="data-table mt-4">
-            <thead>
-              <tr><th>Version</th><th>Data Date</th><th>Upload Date</th><th>Filename</th><th>Score</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="versionHistoryTable"></tbody>
-          </table>
+          <div class="table-scroll-wrapper" style="max-height:none;overflow-x:auto;">
+            <table class="data-table mt-4" style="min-width:900px;">
+              <thead>
+                <tr>
+                  <th>Data Date</th>
+                  <th>Version / File</th>
+                  <th style="text-align:center;">Score</th>
+                  <th style="text-align:center;">Score Δ</th>
+                  <th>Forecast Finish</th>
+                  <th>Contract Finish</th>
+                  <th style="text-align:center;">Activities</th>
+                  <th style="text-align:center;">Activity Δ</th>
+                  <th>Key Issues</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="versionHistoryTable"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -516,19 +544,16 @@ function renderMilestoneSummary() {
 // VERSION HISTORY TAB
 // ────────────────────────────────────────────────────────────────
 function renderVersionHistory() {
-  const tbody = document.getElementById('versionHistoryTable');
+  const summaryBar = document.getElementById('versionSummaryBar');
+  const sparkCard  = document.getElementById('versionSparkCard');
+  const tbody      = document.getElementById('versionHistoryTable');
   if (!tbody) return;
 
   const { project } = getCurrentVersion();
   if (!project) return;
 
-  // Is this a demo project (has demo seed versions)?
   const isDemoProject = ['proj-001', 'proj-002', 'proj-003'].includes(project.id);
-
-  // Get real uploaded versions for this project
-  const realVersions = (App.scheduleVersions || []).filter(v => v.projectId === project.id && v.isReal);
-
-  // For demo projects, also include demo versions; for real projects, only real
+  const realVersions  = (App.scheduleVersions || []).filter(v => v.projectId === project.id && v.isReal);
   let allVersions;
   if (isDemoProject) {
     const demoVersions = (window.DEMO_SCHEDULE_VERSIONS || []).filter(v => v.projectId === project.id);
@@ -537,25 +562,195 @@ function renderVersionHistory() {
     allVersions = [...realVersions];
   }
 
+  // Sort chronologically oldest → newest for delta maths
+  const sorted = [...allVersions].sort((a, b) => (a.dataDate || '').localeCompare(b.dataDate || ''));
+
+  // ── Helpers ──────────────────────────────────────────────────
+  const ragColor = s => s >= 85 ? '#22c55e' : s >= 70 ? '#f59e0b' : '#ef4444';
+
+  const deltaHtml = (val, unit = '', positiveGood = true) => {
+    if (val == null) return '<span style="color:#94a3b8">—</span>';
+    const sign  = val > 0 ? '+' : '';
+    const isGood = positiveGood ? val > 0 : val < 0;
+    const color = val === 0 ? '#64748b' : isGood ? '#22c55e' : '#ef4444';
+    const arrow = val > 0 ? '▲' : val < 0 ? '▼' : '=';
+    return `<span style="color:${color};font-weight:700;">${arrow} ${sign}${val}${unit}</span>`;
+  };
+
+  const getForecastFinish = v => {
+    const lp = v.criticalPath?.longestPath;
+    if (lp?.length) {
+      const last = lp[lp.length - 1];
+      return last.earlyFinish || last.plannedFinish || null;
+    }
+    return v.plannedFinish || null;
+  };
+
+  const getCount = (v, key) => {
+    const r = (v.analysisResults?.rules || []).find(r => r.ruleKey === key);
+    return r ? r.count : null;
+  };
+
+  // ── Summary bridge ───────────────────────────────────────────
+  if (summaryBar) {
+    if (sorted.length === 0) {
+      summaryBar.innerHTML = '';
+    } else {
+      const latest  = sorted[sorted.length - 1];
+      const first   = sorted[0];
+      const scores  = sorted.map(v => v.overallScore).filter(s => s != null);
+      const avg     = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+      const scoreDelta  = (latest?.overallScore != null && first?.overallScore != null) ? latest.overallScore - first.overallScore : null;
+      const actDeltaVal = (latest?.activityCount != null && first?.activityCount != null) ? latest.activityCount - first.activityCount : null;
+      const latestNF    = getCount(latest, 'NEGATIVE_FLOAT');
+      const latestOE    = (getCount(latest, 'OPEN_ENDS_PREDECESSOR') ?? 0) + (getCount(latest, 'OPEN_ENDS_SUCCESSOR') ?? 0);
+
+      const card = (label, main, sub = '') => `
+        <div class="metric-card card" style="text-align:center;padding:18px 12px;">
+          <div style="font-size:26px;font-weight:800;line-height:1.1;">${main}</div>
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-top:5px;">${label}</div>
+          ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${sub}</div>` : ''}
+        </div>`;
+
+      const latestScore = latest?.overallScore ?? '—';
+      const lc = typeof latestScore === 'number' ? ragColor(latestScore) : '#64748b';
+      const avgC = avg != null ? ragColor(avg) : '#64748b';
+
+      summaryBar.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;">
+        ${card('Latest Score',   `<span style="color:${lc}">${latestScore}</span>`, App.getRAGLabel(latestScore))}
+        ${card('Avg Score',      `<span style="color:${avgC}">${avg ?? '—'}</span>`, `${sorted.length} uploads`)}
+        ${card('Score Change',   deltaHtml(scoreDelta, ' pts', false), 'Baseline → Latest')}
+        ${card('Activities',     latest?.activityCount?.toLocaleString() ?? '—', actDeltaVal != null ? `${actDeltaVal > 0 ? '+' : ''}${actDeltaVal} from baseline` : 'Latest upload')}
+        ${card('Latest Data',    `<span style="font-size:14px;font-weight:700;color:#1e1b4b;">${App.formatDate(latest?.dataDate)}</span>`, '')}
+        ${latestNF != null ? card('Neg Float', `<span style="color:#ef4444">${latestNF}</span>`, 'Activities') : ''}
+        ${latestOE > 0 ? card('Open Ends',  `<span style="color:#f59e0b">${latestOE}</span>`, 'Pred + Succ') : ''}
+      </div>`;
+    }
+  }
+
+  // ── Sparkline bar chart ──────────────────────────────────────
+  if (sparkCard && sorted.length >= 2) {
+    sparkCard.style.display = '';
+    const maxS  = Math.max(...sorted.map(v => v.overallScore || 0));
+    const minS  = Math.min(...sorted.map(v => v.overallScore || 0));
+    const range = Math.max(maxS - minS, 10);
+
+    const barsEl   = document.getElementById('sparkBars');
+    const labelsEl = document.getElementById('sparkLabels');
+    const trendBadge = document.getElementById('versionTrendBadge');
+
+    const first  = sorted[0].overallScore;
+    const last   = sorted[sorted.length - 1].overallScore;
+    if (trendBadge) {
+      const delta = last - first;
+      trendBadge.textContent = delta > 0 ? `▲ +${delta} pts` : delta < 0 ? `▼ ${delta} pts` : '= Stable';
+      trendBadge.className   = `card-badge ${delta > 0 ? 'badge-low' : delta < 0 ? 'badge-critical' : 'badge-medium'}`;
+    }
+
+    barsEl.innerHTML = sorted.map(v => {
+      const s   = v.overallScore ?? 0;
+      const pct = Math.round(((s - minS) / range) * 44 + 8); // 8–52px
+      const col = ragColor(s);
+      return `<div title="${v.version}: ${s}" style="flex:1;min-width:18px;height:${pct}px;background:${col};border-radius:4px 4px 0 0;cursor:default;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"></div>`;
+    }).join('');
+
+    labelsEl.innerHTML = sorted.map(v =>
+      `<div style="flex:1;min-width:18px;font-size:9px;color:#94a3b8;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${v.version}">${App.formatDate(v.dataDate).split(',')[0]}</div>`
+    ).join('');
+  } else if (sparkCard) {
+    sparkCard.style.display = 'none';
+  }
+
+  // ── Table rows (newest first) ────────────────────────────────
   if (allVersions.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8;">No schedule versions uploaded yet. <a href="upload.html?projectId=${project.id}">Upload one now.</a></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:#94a3b8;">
+      No schedule versions uploaded yet. <a href="upload.html?projectId=${project.id}">Upload one now.</a>
+    </td></tr>`;
     return;
   }
 
-  tbody.innerHTML = allVersions.slice().reverse().map(v => {
-    const ragClass = App.getRAGClass(v.overallScore);
+  const contractFinish = project.plannedFinish || null;
+
+  tbody.innerHTML = sorted.slice().reverse().map((v, i, arr) => {
+    const prev = arr[i + 1]; // older version
+
+    const sc   = v.overallScore ?? '—';
+    const col  = typeof sc === 'number' ? ragColor(sc) : '#94a3b8';
+
+    // Score delta
+    const sdv  = (prev?.overallScore != null && typeof sc === 'number') ? sc - prev.overallScore : null;
+    const sdHtml = sdv == null ? '<span style="color:#94a3b8">—</span>'
+      : sdv > 0 ? `<span style="color:#22c55e;font-weight:700">▲ +${sdv}</span>`
+      : sdv < 0 ? `<span style="color:#ef4444;font-weight:700">▼ ${sdv}</span>`
+      : `<span style="color:#64748b">= 0</span>`;
+
+    // Activity delta
+    const adv = (prev?.activityCount != null && v.activityCount != null) ? v.activityCount - prev.activityCount : null;
+    const adHtml = adv == null ? '<span style="color:#94a3b8">—</span>'
+      : adv > 0 ? `<span style="color:#3b82f6;font-weight:600">+${adv}</span>`
+      : adv < 0 ? `<span style="color:#f59e0b;font-weight:600">${adv}</span>`
+      : `<span style="color:#94a3b8">±0</span>`;
+
+    // Forecast finish
+    const forecast   = getForecastFinish(v);
+    const forecastStr = forecast ? App.formatDate(forecast) : '<span style="color:#94a3b8">—</span>';
+    const contractStr = contractFinish ? App.formatDate(contractFinish) : '<span style="color:#94a3b8">—</span>';
+
+    // Finish slip (forecast vs contract)
+    let slipHtml = '—';
+    if (forecast && contractFinish) {
+      const slip = Math.round((new Date(forecast) - new Date(contractFinish)) / 86400000);
+      if (!isNaN(slip)) {
+        slipHtml = slip > 0
+          ? `<span style="color:#ef4444;font-size:10px;font-weight:600">+${slip}d slip</span>`
+          : slip < 0 ? `<span style="color:#22c55e;font-size:10px;font-weight:600">${slip}d early</span>`
+          : `<span style="color:#64748b;font-size:10px;">on time</span>`;
+      }
+    }
+
+    // Key issue chips
+    const nf  = getCount(v, 'NEGATIVE_FLOAT');
+    const oep = getCount(v, 'OPEN_ENDS_PREDECESSOR') ?? 0;
+    const oes = getCount(v, 'OPEN_ENDS_SUCCESSOR') ?? 0;
+    const oe  = oep + oes;
+    const hf  = getCount(v, 'HIGH_FLOAT');
+
+    let chips = '';
+    if (nf != null) chips += `<span style="background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;white-space:nowrap;margin:2px;">−Float: ${nf}</span>`;
+    if (oe > 0)     chips += `<span style="background:#fff7ed;color:#c2410c;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;white-space:nowrap;margin:2px;">Open: ${oe}</span>`;
+    if (hf != null && hf > 0) chips += `<span style="background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;white-space:nowrap;margin:2px;">Hi-Float: ${hf}</span>`;
+
     const statusBadge = v.status === 'current'
-      ? '<span class="badge badge-medium">Current</span>'
-      : '<span class="badge badge-info">Published</span>';
-    const realTag = v.isReal ? ' <span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:10px;">Uploaded</span>' : '';
+      ? '<span class="badge badge-medium" style="font-size:10px;">Current</span>'
+      : v.isDemo ? '<span class="badge badge-info" style="font-size:10px;">Demo</span>'
+      : '<span class="badge badge-info" style="font-size:10px;">Published</span>';
+
     return `<tr>
-      <td><strong>${v.version}</strong>${realTag}</td>
-      <td>${App.formatDate(v.dataDate)}</td>
-      <td>${App.formatDate(v.uploadDate)}</td>
-      <td class="text-sm text-secondary">${v.filename || '—'}</td>
-      <td><span class="score-pill score-pill-${ragClass}">${v.overallScore}</span></td>
-      <td>${statusBadge}</td>
+      <td style="white-space:nowrap;">
+        <strong style="font-size:13px;">${App.formatDate(v.dataDate)}</strong>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${v.uploadDate ? 'Uploaded ' + App.formatDate(v.uploadDate) : ''}</div>
+      </td>
       <td>
+        <div style="font-weight:600;font-size:13px;color:#1e1b4b;">${v.version}</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${v.filename || ''}</div>
+      </td>
+      <td style="text-align:center;vertical-align:middle;">
+        <div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="width:44px;height:44px;border-radius:50%;background:${col}18;border:2.5px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${col};">${sc}</div>
+          ${statusBadge}
+        </div>
+      </td>
+      <td style="text-align:center;">${sdHtml}</td>
+      <td style="white-space:nowrap;font-size:13px;">${forecastStr}${forecast && contractFinish ? '<br>' + slipHtml : ''}</td>
+      <td style="white-space:nowrap;font-size:13px;">${contractStr}</td>
+      <td style="text-align:center;">
+        <div style="font-size:13px;font-weight:600;">${v.activityCount != null ? v.activityCount.toLocaleString() : '—'}</div>
+        ${v.relationshipCount != null ? `<div style="font-size:10px;color:#94a3b8;">${v.relationshipCount.toLocaleString()} rels</div>` : ''}
+        ${v.milestoneCount    != null ? `<div style="font-size:10px;color:#94a3b8;">${v.milestoneCount} milestones</div>` : ''}
+      </td>
+      <td style="text-align:center;">${adHtml}</td>
+      <td><div style="display:flex;flex-wrap:wrap;gap:2px;min-width:100px;">${chips || '<span style="color:#94a3b8;font-size:11px;">—</span>'}</div></td>
+      <td style="white-space:nowrap;">
         <a href="project.html?projectId=${project.id}&uploadId=${v.id}" class="btn btn-secondary btn-sm">View</a>
       </td>
     </tr>`;
