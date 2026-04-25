@@ -8,6 +8,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="js/firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="js/auth.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -286,14 +289,13 @@
 </div>
 
 <script>
-  // Redirect if already logged in
-  (function() {
-    const s = CC.Auth.currentUser();
-    if (s) {
+  // Redirect if already logged in — wait for Firebase to resolve session
+  CC.Auth.onReady(function(session) {
+    if (session) {
       const params = new URLSearchParams(window.location.search);
       window.location.href = params.get('redirect') || 'dashboard.html';
     }
-  })();
+  });
 
   function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', (i === 0) === (tab === 'login')));
@@ -317,43 +319,39 @@
     document.getElementById('formSuccess').style.display = 'none';
   }
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
     clearMessages();
-    const email = document.getElementById('loginEmail').value;
+    const email    = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
-    const btn = document.getElementById('loginBtn');
+    const btn      = document.getElementById('loginBtn');
     btn.textContent = 'Signing in…'; btn.disabled = true;
-    setTimeout(() => {
-      const result = CC.Auth.login(email, password);
-      if (result.ok) {
-        const params = new URLSearchParams(window.location.search);
-        window.location.href = params.get('redirect') || 'dashboard.html';
-      } else {
-        showError(result.error);
-        btn.textContent = 'Sign In'; btn.disabled = false;
-      }
-    }, 400);
+    const result = await CC.Auth.login(email, password);
+    if (result.ok) {
+      const params = new URLSearchParams(window.location.search);
+      window.location.href = params.get('redirect') || 'dashboard.html';
+    } else {
+      showError(result.error);
+      btn.textContent = 'Sign In'; btn.disabled = false;
+    }
   }
 
-  function handleSignup(e) {
+  async function handleSignup(e) {
     e.preventDefault();
     clearMessages();
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value;
+    const name     = document.getElementById('signupName').value.trim();
+    const email    = document.getElementById('signupEmail').value;
     const password = document.getElementById('signupPassword').value;
-    const btn = document.getElementById('signupBtn');
+    const btn      = document.getElementById('signupBtn');
     btn.textContent = 'Creating account…'; btn.disabled = true;
-    setTimeout(() => {
-      const result = CC.Auth.register(name, email, password);
-      if (result.ok) {
-        showSuccess('Account created! Redirecting…');
-        setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
-      } else {
-        showError(result.error);
-        btn.textContent = 'Create Free Account'; btn.disabled = false;
-      }
-    }, 400);
+    const result = await CC.Auth.register(name, email, password);
+    if (result.ok) {
+      showSuccess('Account created! Redirecting…');
+      setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
+    } else {
+      showError(result.error);
+      btn.textContent = 'Create Free Account'; btn.disabled = false;
+    }
   }
 
   function showForgot() {
@@ -361,11 +359,26 @@
     document.getElementById('authTabs').style.display = 'none';
     document.getElementById('pane-login').classList.remove('active');
     document.getElementById('pane-signup').classList.remove('active');
-    document.getElementById('pane-reset').classList.add('active');
-    // Pre-fill email if they already typed it
+
+    // Adapt the reset panel based on whether Firebase is active
+    const resetPanel = document.getElementById('pane-reset');
+    if (window.CC_FB_OK) {
+      resetPanel.innerHTML = `
+        <button onclick="hideForgot()" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:#7c6fe0;font-size:14px;font-weight:600;cursor:pointer;padding:0;margin-bottom:24px;">← Back to Sign In</button>
+        <h2 class="login-form-title">Reset your password</h2>
+        <p class="login-form-sub" style="margin-bottom:28px;">Enter your email and we'll send you a password reset link.</p>
+        <div class="form-group">
+          <label class="form-label">Account email</label>
+          <input type="email" id="resetEmail" class="form-input" placeholder="you@company.com" autocomplete="email"/>
+        </div>
+        <button class="btn-primary" id="resetBtn" onclick="handleEmailReset()">Send Reset Email</button>`;
+    }
+
+    resetPanel.classList.add('active');
     const typed = document.getElementById('loginEmail').value;
-    if (typed) document.getElementById('resetEmail').value = typed;
-    document.getElementById('resetEmail').focus();
+    const emailEl = document.getElementById('resetEmail');
+    if (typed && emailEl) emailEl.value = typed;
+    if (emailEl) emailEl.focus();
   }
 
   function hideForgot() {
@@ -376,36 +389,51 @@
     document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
   }
 
-  function handleReset(e) {
+  // Firebase mode: send real reset email
+  async function handleEmailReset() {
+    clearMessages();
+    const email = document.getElementById('resetEmail').value.trim();
+    const btn   = document.getElementById('resetBtn');
+    if (!email) { showError('Please enter your email address.'); return; }
+    btn.textContent = 'Sending…'; btn.disabled = true;
+    const result = await CC.Auth.sendPasswordResetEmail(email);
+    if (result.ok) {
+      showSuccess('Reset email sent! Check your inbox (and spam folder) for a link to set a new password.');
+      btn.textContent = 'Email Sent ✓';
+    } else {
+      showError(result.error);
+      btn.textContent = 'Send Reset Email'; btn.disabled = false;
+    }
+  }
+
+  // localStorage fallback mode: set new password directly
+  async function handleReset(e) {
     e.preventDefault();
     clearMessages();
-    const email   = document.getElementById('resetEmail').value.trim();
-    const pw      = document.getElementById('resetPassword').value;
-    const pwc     = document.getElementById('resetPasswordConfirm').value;
-    const btn     = document.getElementById('resetBtn');
-
+    const email = document.getElementById('resetEmail').value.trim();
+    const pw    = document.getElementById('resetPassword').value;
+    const pwc   = document.getElementById('resetPasswordConfirm').value;
+    const btn   = document.getElementById('resetBtn');
     if (pw !== pwc) { showError('Passwords do not match.'); return; }
-
     btn.textContent = 'Saving…'; btn.disabled = true;
-    setTimeout(() => {
-      const result = CC.Auth.resetPassword(email, pw);
-      if (result.ok) {
-        showSuccess('Password updated! Signing you in…');
-        setTimeout(() => {
-          const loginResult = CC.Auth.login(email, pw);
-          if (loginResult.ok) {
-            const params = new URLSearchParams(window.location.search);
-            window.location.href = params.get('redirect') || 'dashboard.html';
-          } else {
-            hideForgot();
-          }
-        }, 1000);
+    const result = await CC.Auth.resetPassword(email, pw);
+    if (result.ok) {
+      showSuccess('Password updated! Signing you in…');
+      const loginResult = await CC.Auth.login(email, pw);
+      if (loginResult.ok) {
+        const params = new URLSearchParams(window.location.search);
+        setTimeout(() => { window.location.href = params.get('redirect') || 'dashboard.html'; }, 800);
       } else {
-        showError(result.error);
-        btn.textContent = 'Set New Password'; btn.disabled = false;
+        hideForgot();
       }
-    }, 400);
+    } else {
+      showError(result.error);
+      btn.textContent = 'Set New Password'; btn.disabled = false;
+    }
   }
+
+  // Expose Firebase status for showForgot()
+  window.CC_FB_OK = window.CC && window.CC.FB_OK;
 </script>
 </body>
 </html>
