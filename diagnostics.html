@@ -12,6 +12,82 @@
   <link rel="stylesheet" href="css/styles.css" />
   <script src="js/auth.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+  /* ── Print-only elements hidden on screen ── */
+  .print-only { display: none !important; }
+
+  @media print {
+    @page { margin: 0.55in; size: letter portrait; }
+
+    /* Show print elements, hide screen chrome */
+    .print-only  { display: block !important; }
+    .no-print    { display: none !important; }
+    .sidebar, .header-actions, #versionBar, .issue-chips,
+    .filter-bar, .diag-toggle, .diag-detail, .diag-show-more,
+    .info-icon-btn { display: none !important; }
+
+    /* Reset layout to single column full-width */
+    body { background: #fff !important; color: #000 !important; }
+    .app-layout { display: block !important; }
+    .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+    .page-header { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+    .page-title, .page-subtitle, .breadcrumb { display: none !important; }
+
+    /* Cards: no shadow, clean border, no page-break inside */
+    .card { box-shadow: none !important; border: 1px solid #d1d5db !important; break-inside: avoid; page-break-inside: avoid; margin-bottom: 8pt !important; }
+
+    /* Charts row stays side-by-side, constrained height */
+    .grid-2 { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8pt !important; }
+    .chart-container { height: 160px !important; }
+    .card-title { font-size: 11pt !important; margin-bottom: 8pt !important; }
+
+    /* Diagnostic cards compact */
+    .diagnostic-card { padding: 10pt 12pt !important; }
+    .diag-header { margin-bottom: 6pt !important; }
+    .diag-title { font-size: 11pt !important; }
+    .diag-stat-value { font-size: 16pt !important; }
+    .diag-stat-label { font-size: 8pt !important; }
+    .diag-description { font-size: 9.5pt !important; margin-bottom: 4pt !important; }
+    .diag-threshold, .diag-recommendation { font-size: 9pt !important; margin-top: 4pt !important; }
+    .badge { font-size: 8pt !important; padding: 2pt 5pt !important; }
+
+    /* Print-only report header */
+    .print-header {
+      display: flex !important;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 2px solid #1e1b4b;
+      padding-bottom: 10pt;
+      margin-bottom: 14pt;
+    }
+    .print-logo { font-size: 18pt; font-weight: 800; color: #1e1b4b; letter-spacing: -0.02em; }
+    .print-logo span { color: #7c6fe0; }
+    .print-tagline { font-size: 9pt; color: #64748b; margin-top: 2pt; }
+    .print-project-name { font-size: 14pt; font-weight: 700; color: #1e1b4b; text-align: right; }
+    .print-version-meta { font-size: 9.5pt; color: #475569; text-align: right; margin-top: 3pt; }
+    .print-generated { font-size: 8.5pt; color: #94a3b8; text-align: right; margin-top: 2pt; }
+
+    /* Print score bar */
+    .print-score-bar {
+      display: flex !important;
+      gap: 8pt;
+      margin-bottom: 12pt;
+      flex-wrap: wrap;
+    }
+    .print-score-item {
+      flex: 1;
+      min-width: 90pt;
+      border: 1px solid #e2e8f0;
+      border-radius: 6pt;
+      padding: 7pt 10pt;
+      break-inside: avoid;
+    }
+    .print-score-label { font-size: 7.5pt; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 2pt; }
+    .print-score-value { font-size: 15pt; font-weight: 800; }
+    .print-section-title { font-size: 10pt; font-weight: 700; color: #1e1b4b; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; padding-bottom: 5pt; margin: 12pt 0 8pt; break-after: avoid; }
+  }
+  </style>
 </head>
 <body>
 <div class="app-layout">
@@ -63,15 +139,38 @@
 
   <!-- Main Content -->
   <main class="main-content">
+
+    <!-- Print-only report header (hidden on screen, shown only when printing) -->
+    <div class="print-header print-only">
+      <div>
+        <div class="print-logo">Construct<span>Check</span></div>
+        <div class="print-tagline">DCMA+ Schedule Validation Report</div>
+      </div>
+      <div>
+        <div class="print-project-name" id="printProjectName"></div>
+        <div class="print-version-meta" id="printVersionMeta"></div>
+        <div class="print-generated">Generated: <span id="printGenDate"></span></div>
+      </div>
+    </div>
+    <!-- Print-only overall score + category scores bar -->
+    <div class="print-score-bar print-only" id="printScoreBar"></div>
+    <div class="print-section-title print-only">Diagnostic Issues</div>
+
     <div class="page-header">
       <div>
         <div class="breadcrumb"><a href="dashboard.html">Projects</a> › <a href="#" id="diagBreadcrumbLink">Project</a> › Diagnostics</div>
         <h1 class="page-title">Diagnostic Dashboard</h1>
         <p class="page-subtitle" id="diagSubtitle">Loading…</p>
       </div>
-      <div class="header-actions">
-        <button class="btn btn-secondary" onclick="exportCSV()">⬇ Export CSV</button>
-        <button class="btn btn-primary" onclick="window.print()">🖨 Print Report</button>
+      <div class="header-actions no-print">
+        <button class="btn btn-secondary" onclick="openExcelModal()" title="Export selected sections to a multi-sheet Excel workbook">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Export to Excel
+        </button>
+        <button class="btn btn-primary" onclick="printReportCard()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print Report Card
+        </button>
       </div>
     </div>
 
@@ -151,6 +250,36 @@
     <div id="diagnosticsContainer"></div>
 
   </main>
+</div>
+
+<!-- ── Excel Export Modal ──────────────────────────────────────────────────── -->
+<div id="excelModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(15,15,35,0.55);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;width:600px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.25);">
+    <!-- Modal header -->
+    <div style="padding:20px 24px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+      <div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e1b4b;margin:0 0 4px">Export to Excel</h2>
+        <p style="font-size:13px;color:#64748b;margin:0">Select the sections to export. Each section becomes its own sheet, plus a Summary sheet is always included.</p>
+      </div>
+      <button onclick="document.getElementById('excelModal').style.display='none'" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:2px;flex-shrink:0;font-size:20px;line-height:1">&times;</button>
+    </div>
+    <!-- Modal body: rule checkboxes grouped by category -->
+    <div id="excelModalBody" style="flex:1;overflow-y:auto;padding:16px 24px;"></div>
+    <!-- Modal footer -->
+    <div style="padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#f8fafc;border-radius:0 0 16px 16px;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="toggleAllRules(true)">Select All</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleAllRules(false)">Deselect All</button>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('excelModal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="doExcelExport()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Excel
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="js/learn-data.js"></script>
@@ -531,6 +660,159 @@ function switchVersion(versionId) {
   renderCards(diagData);
   renderCharts(diagData);
   resetFilters();
+}
+
+// ─── Print Report Card ────────────────────────────────────────────────────────
+function printReportCard() {
+  // 1. Collapse every open activity drill-down so they don't print
+  document.querySelectorAll('.diag-detail').forEach(el => { el.style.display = 'none'; });
+  document.querySelectorAll('.diag-toggle').forEach(btn => {
+    btn.textContent = btn.textContent.replace('▲','▼').replace('Hide','Show');
+  });
+
+  // 2. Populate print-only header fields
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('printProjectName', _diagProject?.name || '');
+  if (_activeVersion) {
+    set('printVersionMeta',
+      `${_activeVersion.version}  ·  Data Date: ${App.formatDate(_activeVersion.dataDate)}  ·  Overall Score: ${_activeVersion.overallScore ?? '—'}/100`);
+  }
+  set('printGenDate', new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }));
+
+  // 3. Build print score bar (overall + each category)
+  const bar = document.getElementById('printScoreBar');
+  if (bar && _activeVersion?.categoryScores) {
+    const overall = _activeVersion.overallScore ?? '—';
+    const ragColor = overall >= 85 ? '#22c55e' : overall >= 70 ? '#f59e0b' : '#ef4444';
+    let html = `<div class="print-score-item" style="border-top:3px solid ${ragColor};">
+      <div class="print-score-label">Overall Score</div>
+      <div class="print-score-value" style="color:${ragColor}">${overall}</div>
+    </div>`;
+    const cats = _activeVersion.categoryScores;
+    Object.values(cats).forEach(c => {
+      const col = c.score >= 85 ? '#22c55e' : c.score >= 70 ? '#f59e0b' : '#ef4444';
+      html += `<div class="print-score-item" style="border-top:3px solid ${col};">
+        <div class="print-score-label">${c.label || ''}</div>
+        <div class="print-score-value" style="color:${col}">${c.score}</div>
+      </div>`;
+    });
+    bar.innerHTML = html;
+  }
+
+  // 4. Print (browser dialog)
+  window.print();
+}
+
+// ─── Excel Export ─────────────────────────────────────────────────────────────
+let _excelDiagData = null; // diagData cached when modal is opened
+
+function openExcelModal() {
+  _excelDiagData = _activeVersion ? buildDiagData(_activeVersion) : null;
+  if (!_excelDiagData || _excelDiagData.length === 0) {
+    App.showAlert('No diagnostic data to export. Upload a schedule first.', 'error');
+    return;
+  }
+
+  // Group rules by category
+  const byCategory = {};
+  _excelDiagData.forEach(d => {
+    if (!byCategory[d.category]) byCategory[d.category] = [];
+    byCategory[d.category].push(d);
+  });
+
+  const sevBadgeColor = { critical:'#fef2f2;color:#dc2626', high:'#fff7ed;color:#c2410c', medium:'#fffbeb;color:#92400e', low:'#eff6ff;color:#1d4ed8' };
+
+  document.getElementById('excelModalBody').innerHTML = Object.entries(byCategory).map(([cat, rules]) => `
+    <div style="margin-bottom:18px;">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:#1e1b4b;margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" class="excel-cat-cb" data-cat="${escHtml(cat)}" checked onchange="toggleCatRules(this)"
+               style="width:15px;height:15px;accent-color:#6366f1;cursor:pointer;" />
+        ${escHtml(cat)}
+        <span style="font-weight:400;font-size:12px;color:#94a3b8">(${rules.length} rule${rules.length!==1?'s':''})</span>
+      </label>
+      <div style="padding-left:24px;display:flex;flex-direction:column;gap:6px;">
+        ${rules.map(r => {
+          const sc = sevBadgeColor[r.severity] || sevBadgeColor.low;
+          return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;">
+            <input type="checkbox" class="excel-rule-cb" data-rulekey="${escHtml(r.ruleKey)}" data-cat="${escHtml(cat)}" checked
+                   style="width:14px;height:14px;accent-color:#6366f1;cursor:pointer;" />
+            <span style="background:${sc};border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;">${r.severity.toUpperCase()}</span>
+            ${escHtml(r.title)}
+            <span style="color:#94a3b8;margin-left:auto;font-size:12px;">${r.count} activities</span>
+          </label>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('excelModal').style.display = 'flex';
+}
+
+function toggleAllRules(checked) {
+  document.querySelectorAll('#excelModalBody input[type=checkbox]').forEach(cb => { cb.checked = checked; });
+}
+
+function toggleCatRules(catCb) {
+  const cat = catCb.dataset.cat;
+  document.querySelectorAll(`.excel-rule-cb[data-cat="${cat}"]`).forEach(cb => { cb.checked = catCb.checked; });
+}
+
+function doExcelExport() {
+  if (typeof XLSX === 'undefined') {
+    App.showAlert('Excel library still loading — please try again in a moment.', 'error');
+    return;
+  }
+  const diagData = _excelDiagData;
+  if (!diagData) return;
+
+  const selectedKeys = new Set(
+    [...document.querySelectorAll('.excel-rule-cb:checked')].map(cb => cb.dataset.rulekey)
+  );
+  if (selectedKeys.size === 0) { App.showAlert('Select at least one section to export.', 'error'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Summary sheet (always included) ──
+  const summaryRows = [
+    ['Category', 'Severity', 'Rule / Check', 'Affected Activities', '% of Total', 'Score Penalty (pts)', 'DCMA Threshold']
+  ];
+  diagData.forEach(d => {
+    summaryRows.push([
+      d.category, d.severity.toUpperCase(), d.title,
+      d.count, d.percent + '%', '-' + d.penalty.toFixed(1), d.threshold
+    ]);
+  });
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+  // Column widths
+  summaryWs['!cols'] = [22,12,38,12,10,14,30].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+  // ── One sheet per selected rule ──
+  const sheetNames = new Set();
+  diagData.filter(d => selectedKeys.has(d.ruleKey)).forEach(d => {
+    const rows = [['Activity ID', 'Activity Name', 'WBS', 'Start', 'Finish', 'Float (days)', 'Critical']];
+    d.activities.forEach(a => rows.push([
+      a.id, a.name, a.wbs,
+      App.formatDate(a.startDate), App.formatDate(a.finishDate),
+      a.float, a.isCritical ? 'Yes' : ''
+    ]));
+
+    // Excel sheet names: max 31 chars, no special chars, must be unique
+    let name = d.title.replace(/[\\\/\?\*\[\]:]/g, '').substring(0, 31).trim();
+    if (sheetNames.has(name)) name = name.substring(0, 28) + '_' + sheetNames.size;
+    sheetNames.add(name);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [14, 32, 24, 12, 12, 10, 8].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+
+  // Download
+  const proj = (_diagProject?.name || 'Report').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+  const ver  = (_activeVersion?.version || '').replace(/\s+/g,'_');
+  XLSX.writeFile(wb, `ConstructCheck_${proj}_${ver}.xlsx`);
+  document.getElementById('excelModal').style.display = 'none';
+  App.showAlert(`Exported ${sheetNames.size} section${sheetNames.size!==1?'s':''} + Summary sheet.`, 'success');
 }
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
