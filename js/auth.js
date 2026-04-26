@@ -97,6 +97,14 @@
     currentUser() { return _session; },
 
     /**
+     * Resolves once auth state is known (with or without a session).
+     * Safe to call at any point — resolves immediately if auth is already settled.
+     */
+    whenReady() {
+      return new Promise(resolve => _onReady(resolve));
+    },
+
+    /**
      * Returns a Promise that resolves with the session once auth state is known.
      * On protected pages, redirects to login if unauthenticated.
      */

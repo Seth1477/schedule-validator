@@ -471,8 +471,7 @@ const App = {
     const projectId = this.getQueryParam('projectId')
       || this._loadCurrentProjectId()
       || this.projects[0]?.id;
-    const project = this.projects.find(p => p.id === projectId)
-      || this.projects.find(p => p.id !== 'proj-001' && p.id !== 'proj-002' && p.id !== 'proj-003')
+    const project = (projectId ? this.projects.find(p => p.id === projectId) : null)
       || this.projects[0]
       || null;
     // Persist so other pages pick it up without a URL param
@@ -971,5 +970,13 @@ App.init = async function() {
 // Convenience: App.whenReady() returns a promise that resolves when init is done
 App.whenReady = function() { return App._readyPromise; };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+  // Wait for Firebase auth state to settle before loading user-specific data.
+  // Without this, _currentEmail() returns 'guest' during the async Firebase
+  // onAuthStateChanged delay, so projects get loaded under the wrong key.
+  const authReady = (window.CC?.Auth?.whenReady)
+    ? CC.Auth.whenReady()
+    : Promise.resolve();
+  authReady.then(() => App.init());
+});
 window.App = App;
