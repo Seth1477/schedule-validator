@@ -1,5 +1,12 @@
-// scoring.js - Schedule Validation Scoring Engine (DCMA+ style, transparent)
-// v2 — realistic penalty multipliers, complete rule coverage for all 6 categories
+// scoring.js - Schedule Validation Scoring Engine
+// v3 — DCMA-14 aligned, with explicit pass/fail tracking against the
+// industry gold standard. References: DCMA 14-Point Assessment, GAO
+// Schedule Assessment Guide (GAO-16-89G), AACE RP 89R-16.
+//
+// Each rule is tagged with its DCMA point (1-14) where applicable, and
+// the analysis output includes a dcmaCompliance summary that reports
+// pass/fail against every DCMA test — the same scoreboard a forensic
+// scheduler or claims consultant would expect to see.
 
 class ScoringEngine {
   constructor() {
@@ -7,9 +14,9 @@ class ScoringEngine {
       logicQuality: 0.25,
       dateIntegrity: 0.15,
       constraintsFloat: 0.15,
-      activityHygiene: 0.15,
+      activityHygiene: 0.10,
       progressRealism: 0.15,
-      criticalPathReliability: 0.15
+      criticalPathReliability: 0.20
     };
   }
 
@@ -22,12 +29,14 @@ class ScoringEngine {
     const categoryScores = this.computeCategoryScores(rules);
     const overallScore = this.computeOverallScore(categoryScores);
     const rag = this.getRAG(overallScore);
+    const dcmaCompliance = this.computeDCMACompliance(rules, activities, relationships, project);
 
     return {
       overallScore: Math.round(overallScore),
       rag,
       categoryScores,
       rules,
+      dcmaCompliance,
       activityCount: actCount,
       relationshipCount: relationships.length,
       criticalCount: activities.filter(a => a.isCritical).length,
@@ -59,7 +68,7 @@ class ScoringEngine {
     // LOGIC QUALITY (weight: 25%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 1: Missing Predecessors (DCMA: < 5%)
+    // RULE 1: Missing Predecessors (DCMA #1: Logic — < 5%)
     const missingPred = incompleteActs.filter(a =>
       predMap[a.id] && predMap[a.id].length === 0 &&
       a.type !== 'TT_StartMile' && a.type !== 'TT_LOE' && a.type !== 'TT_WBS'
@@ -67,6 +76,7 @@ class ScoringEngine {
     const missingPredPct = missingPred.length / incompleteCount * 100;
     results.push({
       ruleKey: 'OPEN_ENDS_PREDECESSOR',
+      dcmaPoint: 1, source: 'DCMA',
       category: 'logicQuality',
       severity: missingPredPct > 5 ? 'critical' : missingPredPct > 2 ? 'high' : 'medium',
       title: 'Activities Missing Predecessor Logic',
@@ -75,12 +85,13 @@ class ScoringEngine {
       percent: +missingPredPct.toFixed(1),
       penalty: this._pctPenalty(missingPredPct, 5, 15),
       affectedIds: missingPred.map(a => a.id),
-      threshold: '< 5% of incomplete activities (DCMA)',
+      threshold: '< 5% of incomplete activities (DCMA #1)',
+      pass: missingPredPct < 5,
       description: 'Activities with no predecessor create open-end logic gaps that distort float and the critical path.',
       recommendation: 'Add logical predecessor relationships to all flagged activities to close open ends.'
     });
 
-    // RULE 2: Missing Successors (DCMA: < 5%)
+    // RULE 2: Missing Successors (DCMA #1: Logic — < 5%)
     const missingSucc = incompleteActs.filter(a =>
       succMap[a.id] && succMap[a.id].length === 0 &&
       a.type !== 'TT_FinMile' && a.type !== 'TT_Mile' && a.type !== 'TT_LOE' && a.type !== 'TT_WBS'
@@ -88,6 +99,7 @@ class ScoringEngine {
     const missingSuccPct = missingSucc.length / incompleteCount * 100;
     results.push({
       ruleKey: 'OPEN_ENDS_SUCCESSOR',
+      dcmaPoint: 1, source: 'DCMA',
       category: 'logicQuality',
       severity: missingSuccPct > 5 ? 'critical' : missingSuccPct > 2 ? 'high' : 'medium',
       title: 'Activities Missing Successor Logic',
@@ -96,48 +108,73 @@ class ScoringEngine {
       percent: +missingSuccPct.toFixed(1),
       penalty: this._pctPenalty(missingSuccPct, 5, 15),
       affectedIds: missingSucc.map(a => a.id),
-      threshold: '< 5% of incomplete activities (DCMA)',
+      threshold: '< 5% of incomplete activities (DCMA #1)',
+      pass: missingSuccPct < 5,
       description: 'Activities with no successor create dangling endpoints; float calculations become unreliable.',
       recommendation: 'Add logical successor relationships or link to a project finish milestone.'
     });
 
-    // RULE 3: Excessive Lag (DCMA: < 5% of relationships)
-    const highLagRels = relationships.filter(r => r.lag > 5);
-    const highLagPct = highLagRels.length / relCount * 100;
+    // RULE 3: Leads / Negative Lag (DCMA #2: Leads — must be 0)
+    const leads = relationships.filter(r => r.lag < 0);
+    const leadsPct = leads.length / relCount * 100;
     results.push({
-      ruleKey: 'EXCESSIVE_LAG',
+      ruleKey: 'NEGATIVE_LAG_LEADS',
+      dcmaPoint: 2, source: 'DCMA',
       category: 'logicQuality',
-      severity: highLagPct > 10 ? 'high' : highLagPct > 5 ? 'medium' : 'low',
-      title: 'Relationships with Excessive Lag (>5 days)',
-      count: highLagRels.length,
+      severity: leads.length > 0 ? 'critical' : 'low',
+      title: 'Leads (Negative Lag Relationships)',
+      count: leads.length,
       totalActivities: relCount,
-      percent: +highLagPct.toFixed(1),
-      penalty: this._pctPenalty(highLagPct, 5, 10),
+      percent: +leadsPct.toFixed(2),
+      penalty: leads.length > 0 ? Math.min(20, 6 + leadsPct * 2) : 0,
       affectedIds: [],
-      threshold: '< 5% of relationships (DCMA)',
-      description: 'Relationships with lag may represent missing activities. Each lag should be justified.',
-      recommendation: 'Replace lags with explicit activities (e.g., curing time, waiting period) where possible.'
+      threshold: '0 relationships (DCMA #2 — leads not allowed)',
+      pass: leads.length === 0,
+      description: 'Negative lag (leads) compresses logic and is rejected by DCMA. They distort float calculations and can hide late finishes.',
+      recommendation: 'Convert leads to FS+0 relationships with explicit predecessor splits. Document any unavoidable concurrent work as SS relationships.'
     });
 
-    // RULE 4: Non-FS Relationship Types (DCMA: < 10% non-FS)
+    // RULE 4: Lags (DCMA #3: Lags — < 5%)
+    const positiveLagRels = relationships.filter(r => r.lag > 0);
+    const lagPct = positiveLagRels.length / relCount * 100;
+    results.push({
+      ruleKey: 'EXCESSIVE_LAG',
+      dcmaPoint: 3, source: 'DCMA',
+      category: 'logicQuality',
+      severity: lagPct > 10 ? 'high' : lagPct > 5 ? 'medium' : 'low',
+      title: 'Relationships with Positive Lag',
+      count: positiveLagRels.length,
+      totalActivities: relCount,
+      percent: +lagPct.toFixed(1),
+      penalty: this._pctPenalty(lagPct, 5, 10),
+      affectedIds: [],
+      threshold: '< 5% of relationships (DCMA #3)',
+      pass: lagPct < 5,
+      description: 'Lags often substitute for missing activities (cure time, procurement, inspection). Each lag should be justified or replaced.',
+      recommendation: 'Replace lags with explicit activities representing the elapsed work or wait. Document lags that remain.'
+    });
+
+    // RULE 5: Non-FS Relationship Types (DCMA #4: Relationship Types — ≥ 90% FS)
     const nonFS = relationships.filter(r => r.type !== 'PR_FS');
     const nonFSPct = nonFS.length / relCount * 100;
     results.push({
       ruleKey: 'NON_FS_RELATIONSHIPS',
+      dcmaPoint: 4, source: 'DCMA',
       category: 'logicQuality',
       severity: nonFSPct > 15 ? 'high' : nonFSPct > 10 ? 'medium' : 'low',
-      title: 'Non-Finish-to-Start Relationships',
+      title: 'Non Finish-to-Start Relationships',
       count: nonFS.length,
       totalActivities: relCount,
       percent: +nonFSPct.toFixed(1),
       penalty: this._pctPenalty(nonFSPct, 10, 8),
       affectedIds: [],
-      threshold: '< 10% of relationships (DCMA)',
-      description: 'SS, FF, and SF relationships are harder to validate and can mask critical path issues.',
-      recommendation: 'Prefer Finish-to-Start relationships. Review SS/FF/SF logic for correctness.'
+      threshold: '< 10% non-FS / ≥ 90% FS (DCMA #4)',
+      pass: nonFSPct < 10,
+      description: 'SS, FF, and SF relationships are harder to validate and can mask critical path issues. DCMA expects FS to dominate.',
+      recommendation: 'Convert SS/FF relationships to FS where possible; review SF relationships (rare and usually incorrect).'
     });
 
-    // RULE 5: Relationship Density (ratio of relationships to activities — DCMA: 1.4 to 2.5)
+    // RULE 6: Relationship Density (Industry — 1.4 to 2.5 rels/activity)
     const relDensity = relationships.length / actCount;
     const densityPenalty = relDensity < 1.0 ? 20 :
                            relDensity < 1.2 ? 12 :
@@ -145,6 +182,7 @@ class ScoringEngine {
                            relDensity > 3.0 ? 5 : 0;
     results.push({
       ruleKey: 'RELATIONSHIP_DENSITY',
+      dcmaPoint: null, source: 'AACE',
       category: 'logicQuality',
       severity: relDensity < 1.2 ? 'critical' : relDensity < 1.4 ? 'high' : 'low',
       title: `Relationship Density Ratio: ${relDensity.toFixed(2)}:1`,
@@ -153,7 +191,8 @@ class ScoringEngine {
       percent: +(relDensity * 100).toFixed(0),
       penalty: densityPenalty,
       affectedIds: [],
-      threshold: '1.4 to 2.5 relationships per activity (DCMA)',
+      threshold: '1.4 to 2.5 relationships per activity (AACE RP 89R-16)',
+      pass: relDensity >= 1.4 && relDensity <= 3.0,
       description: `The schedule has ${relDensity.toFixed(2)} relationships per activity. Low density indicates missing logic; high density may indicate over-constraining.`,
       recommendation: relDensity < 1.4 ? 'Add missing logic ties to achieve a minimum 1.4:1 ratio.' : 'Review relationship density for over-constraining.'
     });
@@ -162,10 +201,11 @@ class ScoringEngine {
     // DATE INTEGRITY (weight: 15%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 6: Missing Data Date
+    // RULE 7: Missing Data Date
     if (!project.dataDate) {
       results.push({
         ruleKey: 'MISSING_DATA_DATE',
+        dcmaPoint: 9, source: 'DCMA',
         category: 'dateIntegrity',
         severity: 'critical',
         title: 'Missing or Invalid Data Date',
@@ -175,12 +215,14 @@ class ScoringEngine {
         penalty: 30,
         affectedIds: [],
         threshold: 'Data date is required',
+        pass: false,
         description: 'Schedule has no valid data date. All status and progress analysis is invalid.',
         recommendation: 'Set the data date before exporting the XER file.'
       });
     }
 
-    // RULE 7: Actual Dates After Data Date (should be 0)
+    // RULE 8: Actual Dates After Data Date (DCMA #9: Invalid Dates)
+    let invalidActuals = 0;
     if (dataDate) {
       const futureActuals = activities.filter(a => {
         if (!a.actualStart && !a.actualFinish) return false;
@@ -188,9 +230,11 @@ class ScoringEngine {
         const af = a.actualFinish ? new Date(a.actualFinish) : null;
         return (as && as > dataDate) || (af && af > dataDate);
       });
+      invalidActuals = futureActuals.length;
       const futurePct = futureActuals.length / actCount * 100;
       results.push({
         ruleKey: 'FUTURE_ACTUALS',
+        dcmaPoint: 9, source: 'DCMA',
         category: 'dateIntegrity',
         severity: futureActuals.length > 0 ? 'critical' : 'low',
         title: 'Actual Dates Beyond Data Date',
@@ -199,18 +243,50 @@ class ScoringEngine {
         percent: +futurePct.toFixed(1),
         penalty: Math.min(20, futureActuals.length * 3),
         affectedIds: futureActuals.map(a => a.id),
-        threshold: '0 activities (any future actual is an error)',
-        description: 'Actual dates that fall after the data date indicate recording errors.',
+        threshold: '0 activities (DCMA #9 — invalid dates)',
+        pass: futureActuals.length === 0,
+        description: 'Actual dates that fall after the data date are physically impossible and indicate recording errors.',
         recommendation: 'Correct actual dates or move the data date forward.'
       });
     }
 
-    // RULE 8: In-progress activities without actual start
+    // RULE 8b: Forecast (early) dates earlier than data date (DCMA #9: Invalid Dates)
+    let invalidForecasts = 0;
+    if (dataDate) {
+      const pastForecasts = incompleteActs.filter(a => {
+        if (!a.earlyStart) return false;
+        const es = new Date(a.earlyStart);
+        // Forecast for un-started activity should not be in the past
+        if (a.actualStart) return false;
+        return es < dataDate;
+      });
+      invalidForecasts = pastForecasts.length;
+      const pfPct = pastForecasts.length / incompleteCount * 100;
+      results.push({
+        ruleKey: 'INVALID_FORECAST_DATES',
+        dcmaPoint: 9, source: 'DCMA',
+        category: 'dateIntegrity',
+        severity: pastForecasts.length > 0 ? 'high' : 'low',
+        title: 'Forecast Dates Before Data Date',
+        count: pastForecasts.length,
+        totalActivities: incompleteCount,
+        percent: +pfPct.toFixed(1),
+        penalty: Math.min(15, pastForecasts.length * 1.5),
+        affectedIds: pastForecasts.map(a => a.id),
+        threshold: '0 activities (DCMA #9)',
+        pass: pastForecasts.length === 0,
+        description: 'Un-started activities with forecast (early) dates earlier than the data date are invalid — work cannot be scheduled in the past.',
+        recommendation: 'Re-run the schedule (F9 in P6) so forecast dates roll forward to the data date.'
+      });
+    }
+
+    // RULE 9: In-progress activities without actual start
     const inProgressNoStart = activities.filter(a =>
       a.status === 'TK_Active' && !a.actualStart && a.percentComplete > 0
     );
     results.push({
       ruleKey: 'INPROGRESS_NO_ACTUAL_START',
+      dcmaPoint: null, source: 'GAO',
       category: 'dateIntegrity',
       severity: inProgressNoStart.length > 0 ? 'high' : 'low',
       title: 'In-Progress Activities Without Actual Start Date',
@@ -220,16 +296,18 @@ class ScoringEngine {
       penalty: Math.min(15, inProgressNoStart.length * 2),
       affectedIds: inProgressNoStart.map(a => a.id),
       threshold: '0 activities',
+      pass: inProgressNoStart.length === 0,
       description: 'Activities showing progress but lacking an actual start date indicate status reporting errors.',
       recommendation: 'Add actual start dates to all in-progress activities.'
     });
 
-    // RULE 9: Completed activities without actual finish
+    // RULE 10: Completed activities without actual finish
     const completeNoFinish = activities.filter(a =>
       (a.status === 'TK_Complete' || a.percentComplete >= 100) && !a.actualFinish
     );
     results.push({
       ruleKey: 'COMPLETE_NO_ACTUAL_FINISH',
+      dcmaPoint: null, source: 'GAO',
       category: 'dateIntegrity',
       severity: completeNoFinish.length > 0 ? 'high' : 'low',
       title: 'Completed Activities Without Actual Finish Date',
@@ -239,6 +317,7 @@ class ScoringEngine {
       penalty: Math.min(15, completeNoFinish.length * 2),
       affectedIds: completeNoFinish.map(a => a.id),
       threshold: '0 activities',
+      pass: completeNoFinish.length === 0,
       description: 'Activities marked complete but missing actual finish dates corrupt variance analysis.',
       recommendation: 'Record actual finish dates for all completed activities.'
     });
@@ -247,11 +326,12 @@ class ScoringEngine {
     // CONSTRAINTS & FLOAT (weight: 15%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 10: Negative Float (should be 0)
+    // RULE 11: Negative Float (DCMA #7 — must be 0)
     const negFloat = activities.filter(a => a.totalFloat < 0 && a.status !== 'TK_Complete');
     const negFloatPct = negFloat.length / incompleteCount * 100;
     results.push({
       ruleKey: 'NEGATIVE_FLOAT',
+      dcmaPoint: 7, source: 'DCMA',
       category: 'constraintsFloat',
       severity: negFloat.length > 0 ? 'critical' : 'low',
       title: 'Negative Float Activities',
@@ -260,19 +340,21 @@ class ScoringEngine {
       percent: +negFloatPct.toFixed(1),
       penalty: this._pctPenalty(negFloatPct, 0, 20),
       affectedIds: negFloat.map(a => a.id),
-      threshold: '0 activities (any negative float is a concern)',
-      description: 'Activities with negative total float indicate the schedule cannot achieve its planned dates.',
-      recommendation: 'Resolve negative float by adjusting logic, durations, or constraints.'
+      threshold: '0 activities (DCMA #7 — any negative float fails)',
+      pass: negFloat.length === 0,
+      description: 'Activities with negative total float indicate the schedule cannot achieve its planned dates without acceleration.',
+      recommendation: 'Resolve negative float by adjusting logic, durations, or constraints. Investigate any FNLT constraints driving the negative float.'
     });
 
-    // RULE 11: Hard Constraints (DCMA: < 5%)
+    // RULE 12: Hard Constraints (DCMA #5 — < 5%)
+    const hardConstraintTypes = ['CS_MSO', 'CS_FNLT', 'CS_MEOA', 'CS_MEOB', 'CS_MEO', 'CS_MSOOB', 'CS_MANDFIN', 'CS_MANDSTART'];
     const hardConstraints = activities.filter(a =>
-      ['CS_MSO', 'CS_FNLT', 'CS_MEOA', 'CS_MEOB', 'CS_MEO', 'CS_MSOOB'].includes(a.constraintType) &&
-      a.status !== 'TK_Complete'
+      hardConstraintTypes.includes(a.constraintType) && a.status !== 'TK_Complete'
     );
     const hardConPct = hardConstraints.length / incompleteCount * 100;
     results.push({
       ruleKey: 'EXCESSIVE_CONSTRAINTS',
+      dcmaPoint: 5, source: 'DCMA',
       category: 'constraintsFloat',
       severity: hardConPct > 5 ? 'critical' : hardConPct > 2 ? 'high' : 'medium',
       title: 'Excessive Hard Constraints',
@@ -281,40 +363,44 @@ class ScoringEngine {
       percent: +hardConPct.toFixed(1),
       penalty: this._pctPenalty(hardConPct, 5, 12),
       affectedIds: hardConstraints.map(a => a.id),
-      threshold: '< 5% of incomplete activities (DCMA)',
-      description: 'Hard constraints (MSO, FNLT, MEO) override logic-driven dates and can mask critical path issues.',
-      recommendation: 'Replace hard constraints with logical predecessors or soft constraints where possible.'
+      threshold: '< 5% of incomplete activities (DCMA #5)',
+      pass: hardConPct < 5,
+      description: 'Hard constraints (Must Start On, Finish No Later Than, Must Finish On) override schedule logic and can mask critical path issues.',
+      recommendation: 'Replace hard constraints with logical predecessors or soft constraints (SNET, FNET) where possible. Reserve hard constraints for contractual milestones.'
     });
 
-    // RULE 12: High Float Activities (DCMA: < 10% with TF > 44d)
+    // RULE 13: High Float (DCMA #6 — < 5% with TF > 44d)
     const highFloat = incompleteActs.filter(a => a.totalFloat > 44 && a.totalFloat < 9999);
     const highFloatPct = highFloat.length / incompleteCount * 100;
     results.push({
       ruleKey: 'HIGH_FLOAT',
+      dcmaPoint: 6, source: 'DCMA',
       category: 'constraintsFloat',
-      severity: highFloatPct > 15 ? 'high' : highFloatPct > 10 ? 'medium' : 'low',
+      severity: highFloatPct > 15 ? 'high' : highFloatPct > 5 ? 'medium' : 'low',
       title: 'High Float Activities (>44 Working Days)',
       count: highFloat.length,
       totalActivities: incompleteCount,
       percent: +highFloatPct.toFixed(1),
-      penalty: this._pctPenalty(highFloatPct, 10, 10),
+      penalty: this._pctPenalty(highFloatPct, 5, 10),
       affectedIds: highFloat.map(a => a.id),
-      threshold: '< 10% of incomplete activities',
-      description: 'Activities with high float may indicate missing logic or disconnected schedule segments.',
+      threshold: '< 5% of incomplete activities (DCMA #6)',
+      pass: highFloatPct < 5,
+      description: 'Activities with high float (>44d) may indicate missing logic or disconnected schedule segments.',
       recommendation: 'Review logic ties for high-float activities; add successors or constraints if appropriate.'
     });
 
     // ──────────────────────────────────────────────────────────
-    // ACTIVITY HYGIENE (weight: 15%)
+    // ACTIVITY HYGIENE (weight: 10%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 13: Long Duration Activities (DCMA: < 5% with duration > 44d)
+    // RULE 14: Long Duration (DCMA #8 — < 5% with duration > 44d)
     const longDuration = incompleteActs.filter(a =>
       a.duration > 44 && a.type !== 'TT_LOE' && a.type !== 'TT_WBS'
     );
     const longDurPct = longDuration.length / incompleteCount * 100;
     results.push({
       ruleKey: 'LONG_DURATION',
+      dcmaPoint: 8, source: 'DCMA',
       category: 'activityHygiene',
       severity: longDurPct > 10 ? 'high' : longDurPct > 5 ? 'medium' : 'low',
       title: 'Long Duration Activities (>44 Working Days)',
@@ -323,16 +409,18 @@ class ScoringEngine {
       percent: +longDurPct.toFixed(1),
       penalty: this._pctPenalty(longDurPct, 5, 12),
       affectedIds: longDuration.map(a => a.id),
-      threshold: '< 5% of activities (DCMA)',
-      description: 'Activities longer than 44 working days reduce visibility and control accuracy.',
+      threshold: '< 5% of activities (DCMA #8)',
+      pass: longDurPct < 5,
+      description: 'Activities longer than 44 working days reduce visibility and progress measurement accuracy.',
       recommendation: 'Break long-duration activities into shorter tasks with intermediate logic ties.'
     });
 
-    // RULE 14: Missing Calendars
+    // RULE 15: Missing Calendars
     const missingCal = activities.filter(a => !a.calendarId || a.calendarId === '');
     const missingCalPct = missingCal.length / actCount * 100;
     results.push({
       ruleKey: 'MISSING_CALENDAR',
+      dcmaPoint: null, source: 'GAO',
       category: 'activityHygiene',
       severity: missingCalPct > 5 ? 'high' : missingCalPct > 0 ? 'medium' : 'low',
       title: 'Activities Missing Calendar Assignment',
@@ -342,15 +430,17 @@ class ScoringEngine {
       penalty: this._pctPenalty(missingCalPct, 2, 10),
       affectedIds: missingCal.map(a => a.id),
       threshold: '0 activities (all should have calendars)',
+      pass: missingCalPct === 0,
       description: 'Activities without calendars use default settings which may not reflect actual work patterns.',
       recommendation: 'Assign appropriate work calendars to all activities.'
     });
 
-    // RULE 15: LOE Activities as % of total (should be < 10%)
+    // RULE 16: LOE Activity %
     const loeActivities = activities.filter(a => a.type === 'TT_LOE');
     const loePct = loeActivities.length / actCount * 100;
     results.push({
       ruleKey: 'LOE_PERCENTAGE',
+      dcmaPoint: null, source: 'AACE',
       category: 'activityHygiene',
       severity: loePct > 15 ? 'high' : loePct > 10 ? 'medium' : 'low',
       title: 'Level of Effort (LOE) Activity Percentage',
@@ -360,17 +450,19 @@ class ScoringEngine {
       penalty: this._pctPenalty(loePct, 10, 8),
       affectedIds: loeActivities.map(a => a.id),
       threshold: '< 10% of total activities',
+      pass: loePct < 10,
       description: 'Excessive LOE activities reduce schedule granularity and obscure the critical path.',
       recommendation: 'Convert LOE summaries into discrete task-dependent activities where possible.'
     });
 
-    // RULE 16: Zero-duration non-milestone activities
+    // RULE 17: Zero-duration non-milestone activities
     const zeroDurNonMile = incompleteActs.filter(a =>
       a.duration === 0 && a.type !== 'TT_Mile' && a.type !== 'TT_FinMile' &&
       a.type !== 'TT_StartMile' && a.type !== 'TT_WBS' && a.type !== 'TT_LOE'
     );
     results.push({
       ruleKey: 'ZERO_DURATION_NON_MILESTONE',
+      dcmaPoint: null, source: 'GAO',
       category: 'activityHygiene',
       severity: zeroDurNonMile.length > 0 ? 'medium' : 'low',
       title: 'Zero-Duration Task Activities',
@@ -380,6 +472,7 @@ class ScoringEngine {
       penalty: Math.min(8, zeroDurNonMile.length * 0.5),
       affectedIds: zeroDurNonMile.map(a => a.id),
       threshold: '0 (non-milestone tasks should have duration)',
+      pass: zeroDurNonMile.length === 0,
       description: 'Task activities with zero duration should be milestones or have estimated durations.',
       recommendation: 'Change activity type to milestone or assign a realistic duration.'
     });
@@ -388,23 +481,22 @@ class ScoringEngine {
     // PROGRESS REALISM (weight: 15%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 17: Out-of-sequence progress (activities started before all predecessors finished)
+    // RULE 18: Out-of-sequence progress
     if (dataDate) {
       const oosActivities = incompleteActs.filter(a => {
         if (!a.actualStart) return false;
-        const actStart = new Date(a.actualStart);
-        // Check if any predecessor hasn't finished yet but this activity started
         const preds = predMap[a.id] || [];
         return preds.some(rel => {
-          if (rel.type !== 'PR_FS') return false; // Only check FS relationships
+          if (rel.type !== 'PR_FS') return false;
           const predAct = activities.find(act => act.id === rel.predecessorId);
           if (!predAct) return false;
-          return !predAct.actualFinish; // Predecessor not finished but this activity started
+          return !predAct.actualFinish;
         });
       });
       const oosPct = oosActivities.length / incompleteCount * 100;
       results.push({
         ruleKey: 'OUT_OF_SEQUENCE',
+        dcmaPoint: null, source: 'GAO',
         category: 'progressRealism',
         severity: oosPct > 10 ? 'critical' : oosPct > 5 ? 'high' : 'medium',
         title: 'Out-of-Sequence Progress',
@@ -413,50 +505,52 @@ class ScoringEngine {
         percent: +oosPct.toFixed(1),
         penalty: this._pctPenalty(oosPct, 5, 15),
         affectedIds: oosActivities.map(a => a.id),
-        threshold: '< 5% of activities',
-        description: 'Activities that started before their FS predecessors finished indicate out-of-sequence execution.',
+        threshold: '< 5% of activities (GAO best practice)',
+        pass: oosPct < 5,
+        description: 'Activities that started before their FS predecessors finished indicate out-of-sequence execution and unreliable logic.',
         recommendation: 'Update predecessor relationships or modify activity status to reflect actual workflow.'
       });
     }
 
-    // RULE 18: Incomplete activities behind schedule (should have more progress by data date)
+    // RULE 19: Behind Schedule (proxy for DCMA #11 Missed Tasks when no baseline)
     if (dataDate) {
       const behindSchedule = incompleteActs.filter(a => {
         if (!a.plannedFinish || a.percentComplete >= 100) return false;
         const pf = new Date(a.plannedFinish);
         const ps = a.plannedStart ? new Date(a.plannedStart) : null;
         if (!ps || pf <= ps) return false;
-        // Calculate expected progress based on data date position
         const totalDur = pf - ps;
         const elapsed = dataDate - ps;
-        if (elapsed <= 0) return false; // Not started yet per plan
+        if (elapsed <= 0) return false;
         const expectedPct = Math.min(100, (elapsed / totalDur) * 100);
-        // Flag if actual progress is more than 20% behind expected
         return a.percentComplete < (expectedPct - 20) && expectedPct > 30;
       });
       const behindPct = behindSchedule.length / incompleteCount * 100;
       results.push({
         ruleKey: 'BEHIND_SCHEDULE',
+        dcmaPoint: 11, source: 'DCMA',
         category: 'progressRealism',
         severity: behindPct > 15 ? 'critical' : behindPct > 5 ? 'high' : 'medium',
-        title: 'Activities Behind Schedule',
+        title: 'Activities Behind Plan (Missed Tasks Proxy)',
         count: behindSchedule.length,
         totalActivities: incompleteCount,
         percent: +behindPct.toFixed(1),
-        penalty: this._pctPenalty(behindPct, 10, 12),
+        penalty: this._pctPenalty(behindPct, 5, 12),
         affectedIds: behindSchedule.map(a => a.id),
-        threshold: '< 10% of incomplete activities',
-        description: 'Activities whose actual progress significantly trails their planned timeline.',
-        recommendation: 'Update remaining durations or re-sequence activities to reflect realistic progress.'
+        threshold: '< 5% of incomplete activities (DCMA #11 proxy)',
+        pass: behindPct < 5,
+        description: 'Activities whose actual progress significantly trails their planned timeline. Proxy for DCMA Missed Tasks (full check requires baseline).',
+        recommendation: 'Update remaining durations or re-sequence activities to reflect realistic progress. For full DCMA #11 compliance, attach a baseline schedule.'
       });
     }
 
-    // RULE 19: Activities with Actual Start but 0% Progress
+    // RULE 20: Started but no progress
     const startedNoProgress = activities.filter(a =>
       a.actualStart && !a.actualFinish && a.percentComplete === 0 && a.status !== 'TK_Complete'
     );
     results.push({
       ruleKey: 'STARTED_NO_PROGRESS',
+      dcmaPoint: null, source: 'GAO',
       category: 'progressRealism',
       severity: startedNoProgress.length > 5 ? 'high' : startedNoProgress.length > 0 ? 'medium' : 'low',
       title: 'Started Activities with 0% Progress',
@@ -466,19 +560,21 @@ class ScoringEngine {
       penalty: Math.min(10, startedNoProgress.length * 1.5),
       affectedIds: startedNoProgress.map(a => a.id),
       threshold: '0 activities',
+      pass: startedNoProgress.length === 0,
       description: 'Activities that have started but show zero percent complete suggest status is not being updated.',
       recommendation: 'Update percent complete for all in-progress activities.'
     });
 
     // ──────────────────────────────────────────────────────────
-    // CRITICAL PATH RELIABILITY (weight: 15%)
+    // CRITICAL PATH RELIABILITY (weight: 20%)
     // ──────────────────────────────────────────────────────────
 
-    // RULE 20: Near-Critical Density (DCMA: < 15%)
+    // RULE 21: Near-Critical Density
     const nearCritical = incompleteActs.filter(a => a.totalFloat >= 0 && a.totalFloat <= 15);
     const nearCritPct = nearCritical.length / incompleteCount * 100;
     results.push({
       ruleKey: 'NEAR_CRITICAL_DENSITY',
+      dcmaPoint: null, source: 'AACE',
       category: 'criticalPathReliability',
       severity: nearCritPct > 25 ? 'high' : nearCritPct > 15 ? 'medium' : 'low',
       title: 'High Near-Critical Activity Count (0-15 days float)',
@@ -488,14 +584,16 @@ class ScoringEngine {
       penalty: this._pctPenalty(nearCritPct, 15, 10),
       affectedIds: nearCritical.map(a => a.id),
       threshold: '< 15% of incomplete activities',
+      pass: nearCritPct < 15,
       description: 'A high density of near-critical activities means the schedule has limited contingency.',
       recommendation: 'Review near-critical activities for opportunities to add buffer or re-sequence work.'
     });
 
-    // RULE 21: LOE Activities on Critical Path
+    // RULE 22: LOE Activities on Critical Path
     const loeCritical = activities.filter(a => a.type === 'TT_LOE' && a.isCritical);
     results.push({
       ruleKey: 'LOE_CRITICAL',
+      dcmaPoint: null, source: 'AACE',
       category: 'criticalPathReliability',
       severity: loeCritical.length > 0 ? 'critical' : 'low',
       title: 'Level of Effort Activities on Critical Path',
@@ -505,16 +603,55 @@ class ScoringEngine {
       penalty: Math.min(15, loeCritical.length * 3),
       affectedIds: loeCritical.map(a => a.id),
       threshold: '0 activities (LOE must not drive CP)',
+      pass: loeCritical.length === 0,
       description: 'LOE activities on the critical path distort schedule logic and float calculations.',
       recommendation: 'Remove LOE activities from the critical path by restructuring relationships.'
     });
 
-    // RULE 22: Critical path length index — ratio of critical activities
+    // RULE 23: Critical Path Length Index (DCMA #13 — CPLI ≥ 0.95)
+    let cpli = null;
+    if (project.plannedFinish && dataDate) {
+      const baselineFinish = new Date(project.plannedFinish);
+      // Forecast finish = max early finish across remaining activities
+      const remainingFinishes = incompleteActs
+        .map(a => a.earlyFinish ? new Date(a.earlyFinish) : null)
+        .filter(d => d && !isNaN(d.getTime()));
+      if (remainingFinishes.length > 0 && !isNaN(baselineFinish.getTime())) {
+        const forecastFinish = new Date(Math.max(...remainingFinishes));
+        const dur = (baselineFinish - dataDate) / 86400000;
+        const fcDur = (forecastFinish - dataDate) / 86400000;
+        if (fcDur > 0) {
+          cpli = +(dur / fcDur).toFixed(3);
+        }
+      }
+    }
+    if (cpli !== null) {
+      const cpliPenalty = cpli >= 0.95 ? 0 : cpli >= 0.85 ? 8 : cpli >= 0.70 ? 15 : 22;
+      results.push({
+        ruleKey: 'CPLI',
+        dcmaPoint: 13, source: 'DCMA',
+        category: 'criticalPathReliability',
+        severity: cpli < 0.85 ? 'critical' : cpli < 0.95 ? 'high' : 'low',
+        title: `Critical Path Length Index: ${cpli.toFixed(2)}`,
+        count: 1,
+        totalActivities: 1,
+        percent: +(cpli * 100).toFixed(1),
+        penalty: cpliPenalty,
+        affectedIds: [],
+        threshold: 'CPLI ≥ 0.95 (DCMA #13)',
+        pass: cpli >= 0.95,
+        description: `CPLI = ${cpli.toFixed(3)}. Measures schedule efficiency: ratio of remaining critical path duration to remaining baseline duration. Below 0.95 means the schedule has lost efficiency.`,
+        recommendation: cpli < 0.95 ? 'The schedule is forecasting late. Investigate critical path activities for compression opportunities or escalate as a recovery item.' : 'Schedule efficiency is healthy.'
+      });
+    }
+
+    // RULE 24: Critical Activity Ratio
     const criticalActs = incompleteActs.filter(a => a.isCritical);
     const critPct = criticalActs.length / incompleteCount * 100;
     const critPenalty = critPct > 30 ? 10 : critPct > 20 ? 5 : critPct < 2 ? 8 : 0;
     results.push({
       ruleKey: 'CRITICAL_RATIO',
+      dcmaPoint: null, source: 'AACE',
       category: 'criticalPathReliability',
       severity: critPct > 30 || critPct < 2 ? 'high' : 'low',
       title: `Critical Activity Ratio: ${critPct.toFixed(1)}%`,
@@ -524,6 +661,7 @@ class ScoringEngine {
       penalty: critPenalty,
       affectedIds: criticalActs.map(a => a.id),
       threshold: '5-20% of activities typically on critical path',
+      pass: critPct >= 2 && critPct <= 30,
       description: critPct > 30
         ? 'An unusually high percentage of critical activities suggests over-constrained logic.'
         : critPct < 2
@@ -539,31 +677,81 @@ class ScoringEngine {
     return results;
   }
 
+  // DCMA-14 compliance scoreboard — what claims consultants and auditors expect
+  computeDCMACompliance(rules, activities, relationships, project) {
+    const ruleByPoint = {};
+    rules.forEach(r => {
+      if (r.dcmaPoint) {
+        // Take worst result for each point (lowest pass)
+        if (!ruleByPoint[r.dcmaPoint] || (ruleByPoint[r.dcmaPoint].pass && !r.pass)) {
+          ruleByPoint[r.dcmaPoint] = r;
+        }
+      }
+    });
+
+    const dcma14 = [
+      { point: 1,  name: 'Logic',                tested: true,  rule: ruleByPoint[1] },
+      { point: 2,  name: 'Leads (Negative Lag)', tested: true,  rule: ruleByPoint[2] },
+      { point: 3,  name: 'Lags',                 tested: true,  rule: ruleByPoint[3] },
+      { point: 4,  name: 'Relationship Types',   tested: true,  rule: ruleByPoint[4] },
+      { point: 5,  name: 'Hard Constraints',     tested: true,  rule: ruleByPoint[5] },
+      { point: 6,  name: 'High Float',           tested: true,  rule: ruleByPoint[6] },
+      { point: 7,  name: 'Negative Float',       tested: true,  rule: ruleByPoint[7] },
+      { point: 8,  name: 'High Duration',        tested: true,  rule: ruleByPoint[8] },
+      { point: 9,  name: 'Invalid Dates',        tested: true,  rule: ruleByPoint[9] },
+      { point: 10, name: 'Resources',            tested: false, note: 'Resource loading not parsed in this version' },
+      { point: 11, name: 'Missed Tasks',         tested: true,  rule: ruleByPoint[11], note: 'Computed as proxy without baseline' },
+      { point: 12, name: 'Critical Path Test',   tested: false, note: 'Requires what-if simulation; manual check' },
+      { point: 13, name: 'Critical Path Length Index', tested: !!ruleByPoint[13], rule: ruleByPoint[13], note: ruleByPoint[13] ? null : 'Requires baseline finish date' },
+      { point: 14, name: 'Baseline Execution Index',   tested: false, note: 'Requires baseline schedule for true BEI' }
+    ];
+
+    const tested  = dcma14.filter(p => p.tested);
+    const passed  = tested.filter(p => p.rule && p.rule.pass).length;
+    const failed  = tested.length - passed;
+    const pct     = tested.length > 0 ? Math.round(passed / tested.length * 100) : 0;
+
+    return {
+      passed,
+      failed,
+      tested: tested.length,
+      total: 14,
+      percentage: pct,
+      grade: pct >= 95 ? 'A' : pct >= 85 ? 'B' : pct >= 70 ? 'C' : pct >= 50 ? 'D' : 'F',
+      points: dcma14.map(p => ({
+        point: p.point,
+        name: p.name,
+        tested: p.tested,
+        pass: p.tested && p.rule ? p.rule.pass : null,
+        ruleKey: p.rule ? p.rule.ruleKey : null,
+        note: p.note || null,
+        percent: p.rule ? p.rule.percent : null,
+        threshold: p.rule ? p.rule.threshold : null
+      }))
+    };
+  }
+
   // Penalty calculator: scales linearly past threshold up to maxPenalty
-  // At threshold: 0 penalty. At 2x threshold: ~maxPenalty. Below threshold: reduced penalty.
   _pctPenalty(actualPct, thresholdPct, maxPenalty) {
     if (actualPct <= 0) return 0;
     if (thresholdPct <= 0) {
-      // Zero-threshold rule (any occurrence is bad)
       return Math.min(maxPenalty, actualPct * (maxPenalty / 10));
     }
     if (actualPct <= thresholdPct) {
-      // Below threshold — passes DCMA check, no penalty
       return 0;
     }
-    // Above threshold — significant penalty scaling toward max
     const excess = (actualPct - thresholdPct) / thresholdPct;
     return Math.min(maxPenalty, maxPenalty * 0.3 + excess * maxPenalty * 0.7);
   }
 
   computeCategoryScores(rules) {
     const categories = {
-      logicQuality: { label: 'Logic Quality', weight: this.weights.logicQuality, penalty: 0, maxPenalty: 60 },
-      dateIntegrity: { label: 'Date Integrity', weight: this.weights.dateIntegrity, penalty: 0, maxPenalty: 50 },
-      constraintsFloat: { label: 'Constraints & Float', weight: this.weights.constraintsFloat, penalty: 0, maxPenalty: 50 },
-      activityHygiene: { label: 'Activity Hygiene', weight: this.weights.activityHygiene, penalty: 0, maxPenalty: 40 },
-      progressRealism: { label: 'Progress Realism', weight: this.weights.progressRealism, penalty: 0, maxPenalty: 50 },
-      criticalPathReliability: { label: 'Critical Path Reliability', weight: this.weights.criticalPathReliability, penalty: 0, maxPenalty: 45 }
+      logicQuality:           { label: 'Logic Quality',            weight: this.weights.logicQuality,           penalty: 0, maxPenalty: 60 },
+      dateIntegrity:          { label: 'Date Integrity',           weight: this.weights.dateIntegrity,          penalty: 0, maxPenalty: 50 },
+      constraintsFloat:       { label: 'Constraints & Float',      weight: this.weights.constraintsFloat,       penalty: 0, maxPenalty: 50 },
+      activityHygiene:        { label: 'Activity Hygiene',         weight: this.weights.activityHygiene,        penalty: 0, maxPenalty: 40 },
+      progressRealism:        { label: 'Progress Realism',         weight: this.weights.progressRealism,        penalty: 0, maxPenalty: 50 },
+      criticalPathReliability:{ label: 'Critical Path Reliability',weight: this.weights.criticalPathReliability,penalty: 0, maxPenalty: 50 }
     };
 
     rules.forEach(rule => {
