@@ -20,10 +20,10 @@
  */
 
 window.CC_FIREBASE_CONFIG = {
-  apiKey:            'REPLACE_ME',
-  authDomain:        'REPLACE_ME',
-  projectId:         'REPLACE_ME',
-  storageBucket:     'REPLACE_ME',
-  messagingSenderId: 'REPLACE_ME',
-  appId:             'REPLACE_ME',
+  apiKey:            'AIzaSyC_fUpvQQW6hyXdjBiBRn6zbiO5tP_kxKs',
+  authDomain:        'construct-check-e855d.firebaseapp.com',
+  projectId:         'construct-check-e855d',
+  storageBucket:     'construct-check-e855d.firebasestorage.app',
+  messagingSenderId: '526957791403',
+  appId:             '1:526957791403:web:ad1e26269278e1d08f0fee',
 };
