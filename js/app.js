@@ -175,6 +175,22 @@ const App = {
     return true;
   },
 
+  deleteVersion(versionId) {
+    const idx = this.scheduleVersions.findIndex(v => v.id === versionId);
+    if (idx === -1) return false;
+    const v = this.scheduleVersions[idx];
+    this.scheduleVersions.splice(idx, 1);
+    // Update project upload count and latest score
+    const proj = this.projects.find(p => p.id === v.projectId);
+    if (proj) {
+      const remaining = this.scheduleVersions.filter(sv => sv.projectId === proj.id && sv.isReal);
+      proj.uploads = remaining.length;
+      proj.latestScore = remaining.length ? remaining[remaining.length - 1].overallScore : null;
+    }
+    this.saveToStorage();
+    return true;
+  },
+
   // ─── Navigation & Events ─────────────────────────────────────
   getCurrentPage() {
     const path = window.location.pathname;

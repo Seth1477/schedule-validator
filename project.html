@@ -753,11 +753,22 @@ function renderVersionHistory() {
       </td>
       <td style="text-align:center;">${adHtml}</td>
       <td><div style="display:flex;flex-wrap:wrap;gap:2px;min-width:100px;">${chips || '<span style="color:#94a3b8;font-size:11px;">—</span>'}</div></td>
-      <td style="white-space:nowrap;">
+      <td style="white-space:nowrap;display:flex;gap:6px;align-items:center;">
         <a href="project.html?projectId=${project.id}&uploadId=${v.id}" class="btn btn-secondary btn-sm">View</a>
+        ${!v.isDemo ? `<button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;" onclick="confirmDeleteVersion('${v.id}','${(v.version || '').replace(/'/g,"\\'")}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        </button>` : ''}
       </td>
     </tr>`;
   }).join('');
+}
+
+function confirmDeleteVersion(versionId, versionLabel) {
+  if (!confirm(`Delete "${versionLabel}"? This cannot be undone.`)) return;
+  if (App.deleteVersion(versionId)) {
+    renderVersionHistory();
+    App.showAlert(`Version "${versionLabel}" deleted.`, 'success');
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
